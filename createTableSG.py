@@ -185,9 +185,9 @@ while True:
                     confirmation = 2
                     # print "elif confirmation2, value confirmation: " + str(confirmation)
                     break
-                confInp = raw_input("Is this what you are looking for? ")
+                confInp = raw_input("Is this what you are looking for? (Y/n) ")
 
-                if  confInp.lower() == 'yes' or confInp.lower() == 'y':
+                if  confInp.lower() == 'yes' or confInp.lower() == 'y' or confInp.lower() == '':
                     # print "Yep, '" + app['name'] + "' is there, the appID is:", app['appid']
                     confirmation3 = 0
                     appID = app['appid']
@@ -208,8 +208,8 @@ while True:
 
                             while True:
                                 print "This game is in a package called: '" + unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore') + "'"
-                                subConfInp = raw_input("Is this what you are looking for? ")
-                                if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y':
+                                subConfInp = raw_input("Is this what you are looking for? (Y/n) ")
+                                if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y' or subConfInp.lower() == '':
                                     appName = unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore')
                                     # Price ITAD way
                                     appPrice = retrieve_price(itad_sub_plain(subID))
@@ -330,9 +330,9 @@ while True:
             print "There is a", tryAppID[str(appID)]['data']['type'], "called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
 
             while True:
-                confInp = raw_input("Is this what you are looking for? ")
+                confInp = raw_input("Is this what you are looking for? (Y/n) ")
 
-                if  confInp.lower() == 'yes' or confInp.lower() == 'y':
+                if  confInp.lower() == 'yes' or confInp.lower() == 'y' or confInp.lower() == '':
                     # print "Yep, '" + app['name'] + "' is there, the appID is:", app['appid']
                     appID = app['appid']
                     confirmation = 1
