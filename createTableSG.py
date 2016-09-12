@@ -14,6 +14,10 @@ import re
 
 # Put here your ITAD API key
 ITADKey = ""
+invalidBundles = ["DailyIndieGame", "Chrono.GG", "Ikoid", "Humble Mobile Bundle", "PlayInjector", "Vodo",
+"Get Loaded", "GreenMan Gaming", "Indie Ammo Box", "MacGameStore", "PeonBundle", "Select n'Play", "StackSocial",
+"StoryBundle", "Bundle Central", "Cult of Mac", "GOG", "Gram.pl", "Indie Fort", "IUP Bundle", "Paddle",
+"SavyGamer", "Shinyloot", "Sophie Houlden", "Unversala"]
 
 
 def itad_plain(appID):
@@ -108,11 +112,12 @@ def loop_package(subID):
         appJson = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(element['id'])))
 
         # print appJson[str(element['id'])]['data']['name']
-        for category in appJson[str(element['id'])]['data']['categories']:
-            if category['id'] == 29:
-                # print appJson[str(element['id'])]['data']['name'] + ": Yes"
-                appCards = "&#10084;"
-                return appCards
+        if 'categories' in appJson[str(element['id'])]['data'] != False:
+            for category in appJson[str(element['id'])]['data']['categories']:
+                if category['id'] == 29:
+                    # print appJson[str(element['id'])]['data']['name'] + ": Yes"
+                    appCards = "&#10084;"
+                    return appCards
 
     return appCards
 
@@ -122,10 +127,19 @@ def retrieve_bundles(plain):
     array = []
     string = "https://api.isthereanydeal.com/v01/game/bundles/us/?key=" + ITADKey + "&limit=-1&expired=1&plains=" + plain
     jsonFile = json.loads(urllib.urlopen(string).read())
+    appBundled = 0
     for element in jsonFile['data'][plain]['list']:
-        to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
-        array.append(to_push)
-    return [array, jsonFile['data'][plain]['urls']['bundles']]
+        # This method is deprecated
+        #to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
+        #array.append(to_push)
+        if not element["bundle"] in invalidBundles:
+            appBundled += 1
+
+    if appBundled > 0:
+        appBundled = "[" + str(appBundled) + "](" + jsonFile['data'][plain]['urls']['game'] + ")"
+    else:
+        appBundled = "0"
+    return appBundled
 
 print "Type '!done' without the quotes to stop the program. Type '!next' to go to the next tier. Type '!package' or '!pack' to go into the package mode. None of the commands are case sensitive, so it doesn't matter if you type it with capital letters or not. The same goes for game's titles, but be careful with stuff like - : etc in the title or typing 2 instead of II, the program won't be able to find the game in those cases."
 
@@ -216,21 +230,22 @@ while True:
                                     appCards = loop_package(subID)
                                     appReviews = "-"
 
-                                    appBundled = 0;
-                                    retrievedBundles = retrieve_bundles(itad_sub_plain(subID))
-                                    for element in retrievedBundles[0]:
-                                        bundleInp = raw_input(element)
-                                        if bundleInp.lower() == "yes" or bundleInp.lower() == "y":
-                                            appBundled += 1
-                                        elif bundleInp.lower() == "no" or bundleInp.lower() == "n":
-                                            continue
-                                        elif bundleInp.lower() == "!cancel":
-                                            break
+                                    appBundled = retrieve_bundles(itad_sub_plain(subID));
+                                    # This method is deprecated
+                                    #retrievedBundles = retrieve_bundles(itad_sub_plain(subID))
+                                    #for element in retrievedBundles[0]:
+                                    #    bundleInp = raw_input(element)
+                                    #    if bundleInp.lower() == "yes" or bundleInp.lower() == "y":
+                                    #        appBundled += 1
+                                    #    elif bundleInp.lower() == "no" or bundleInp.lower() == "n":
+                                    #        continue
+                                    #    elif bundleInp.lower() == "!cancel":
+                                    #        break
 
-                                    if appBundled > 0:
-                                        appBundled = "[" + str(appBundled) + "](" + retrievedBundles[1] + ")"
-                                    else:
-                                        appBundled = "0"
+                                    #if appBundled > 0:
+                                    #    appBundled = "[" + str(appBundled) + "](" + retrievedBundles[1] + ")"
+                                    #else:
+                                    #    appBundled = "0"
 
                                     confirmation2 = 1
                                     packInp = None
@@ -367,21 +382,22 @@ while True:
                 # appReviews = retrieve_percentage(itad_plain(appID))
                 # if appReviews != "-":
                 #     appReviews = str(appReviews) + "%"
-                appBundled = 0;
-                retrievedBundles = retrieve_bundles(itad_plain(appID))
-                for element in retrievedBundles[0]:
-                    bundleInp = raw_input(element)
-                    if bundleInp.lower() == "yes" or bundleInp.lower() == "y":
-                        appBundled += 1
-                    elif bundleInp.lower() == "no" or bundleInp.lower() == "n":
-                        continue
-                    elif bundleInp.lower() == "!cancel":
-                        break
+                appBundled = retrieve_bundles(itad_plain(appID));
+                # This method is deprecated
+                #retrievedBundles = retrieve_bundles(itad_plain(appID))
+                #for element in retrievedBundles[0]:
+                #    bundleInp = raw_input(element)
+                #    if bundleInp.lower() == "yes" or bundleInp.lower() == "y":
+                #        appBundled += 1
+                #    elif bundleInp.lower() == "no" or bundleInp.lower() == "n":
+                #        continue
+                #    elif bundleInp.lower() == "!cancel":
+                #        break
 
-                if appBundled > 0:
-                    appBundled = "[" + str(appBundled) + "](" + retrievedBundles[1] + ")"
-                else:
-                    appBundled = "0"
+                #if appBundled > 0:
+                #    appBundled = "[" + str(appBundled) + "](" + retrievedBundles[1] + ")"
+                #else:
+                #    appBundled = "0"
 
                 # print appName
                 # print appLink
