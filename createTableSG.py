@@ -19,7 +19,7 @@ with open("keys.json") as keys_file:
     keys = json.load(keys_file)
     ITADKey = keys['ITAD']
 
-invalidBundles = ["DailyIndieGame", "Chrono.GG", "Chrono.gg" "Ikoid", "Humble Mobile Bundle", "PlayInjector", "Vodo",
+invalidBundles = ["DailyIndieGame", "Chrono.GG", "Chrono.gg", "Ikoid", "Humble Mobile Bundle", "PlayInjector", "Vodo",
 "Get Loaded", "GreenMan Gaming", "Indie Ammo Box", "MacGameStore", "PeonBundle", "Select n'Play", "StackSocial",
 "StoryBundle", "Bundle Central", "Cult of Mac", "GOG", "Gram.pl", "Indie Fort", "IUP Bundle", "Paddle",
 "SavyGamer", "Shinyloot", "Sophie Houlden", "Unversala"]
