@@ -153,7 +153,7 @@ def retrieve_bundles(plain):
         #to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
         #array.append(to_push)
         if not element["bundle"] in invalidBundles:
-            print "Following bundle:", element['bundle'], "not in the list"
+            # print "Following bundle:", element['bundle'], "not in the list"
             appBundled += 1
 
     if appBundled > 0:
