@@ -19,7 +19,7 @@ with open("keys.json") as keys_file:
     keys = json.load(keys_file)
     ITADKey = keys['ITAD']
 
-invalidBundles = ["DailyIndieGame", "Chrono.GG", "Ikoid", "Humble Mobile Bundle", "PlayInjector", "Vodo",
+invalidBundles = ["DailyIndieGame", "Chrono.GG", "Chrono.gg" "Ikoid", "Humble Mobile Bundle", "PlayInjector", "Vodo",
 "Get Loaded", "GreenMan Gaming", "Indie Ammo Box", "MacGameStore", "PeonBundle", "Select n'Play", "StackSocial",
 "StoryBundle", "Bundle Central", "Cult of Mac", "GOG", "Gram.pl", "Indie Fort", "IUP Bundle", "Paddle",
 "SavyGamer", "Shinyloot", "Sophie Houlden", "Unversala"]
@@ -51,52 +51,67 @@ def retrieve_percentage(plain):
 
 
 def steam_rating(appID):
-    URL = requests.get("http://store.steampowered.com/app/" + str(appID))
+    URL = requests.get("http://store.steampowered.com/appreviews/" + str(appID) + "?start_offset=0&day_range=30&filter=summary&language=all&review_type=all&purchase_type=all")
 
-    if "agecheck" in URL.url:
-        req = requests.post(URL.url, data = {'snr': '1_agecheck_agecheck_age-gate',
-        'ageDay': 1,
-        'ageMonth': "January",
-        'ageYear': 1993})
-        # Now req.url should be /app/56493 without any agecheck
-        soup = BeautifulSoup(req.content, 'html.parser')
-        if len(soup.find_all('div', 'subtitle column')) > 1:
-            reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
-            reviewsTxt = reviewsTxt[1].string.strip()
-            percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
-            percentage = int(percentage)
-            totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
-            totalCount = int(totalCount)
-        else:
-            reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
-            if len(reviewsTxt) == 0:
-                return "-"
-            reviewsTxt = reviewsTxt[0].string.strip()
-            percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
-            percentage = int(percentage)
-            totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
-            totalCount = int(totalCount)
+    jsonf = URL.json()
+    soup = BeautifulSoup(jsonf['review_score'], 'html.parser')
+    total = soup.find_all('span')[0]
+    total = total.string.replace(",", "")
+    total = re.findall('(\d+)\s', total)[0]
+    total = "{:,}".format(int(total))
+    percentage = soup.find_all('span')[1]
+    percentage = re.findall("(\d+)%", percentage['data-store-tooltip'])[0]
 
-    else:
-        soup = BeautifulSoup(URL.content, 'html.parser')
-        if len(soup.find_all('div', 'subtitle column')) > 1:
-            reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')[1].string
-            reviewsTxt = reviewsTxt.strip()
-            percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
-            percentage = int(percentage)
-            totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
-            totalCount = int(totalCount)
-        else:
-            reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
-            if len(reviewsTxt) == 0:
-                return "-"
-            reviewsTxt = reviewsTxt[0].string.strip()
-            percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
-            percentage = int(percentage)
-            totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
-            totalCount = int(totalCount)
+    return "%s%% of *%s Reviews*" % (percentage, total)
 
-    return str(percentage) + "% of *" + "{:,}".format(totalCount) + " Reviews*"
+    # Deprecated with the new review system now Steam uses ajax for the info
+    # We can request that instead. Uses less space and has no checks at all.
+    # URL = requests.get("http://store.steampowered.com/app/" + str(appID))
+    #
+    # if "agecheck" in URL.url:
+    #     req = requests.post(URL.url, data = {'snr': '1_agecheck_agecheck_age-gate',
+    #     'ageDay': 1,
+    #     'ageMonth': "January",
+    #     'ageYear': 1993})
+    #     # Now req.url should be /app/56493 without any agecheck
+    #     soup = BeautifulSoup(req.content, 'html.parser')
+    #     if len(soup.find_all('div', 'subtitle column')) > 1:
+    #         reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
+    #         reviewsTxt = reviewsTxt[1].string.strip()
+    #         percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
+    #         percentage = int(percentage)
+    #         totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
+    #         totalCount = int(totalCount)
+    #     else:
+    #         reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
+    #         if len(reviewsTxt) == 0:
+    #             return "-"
+    #         reviewsTxt = reviewsTxt[0].string.strip()
+    #         percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
+    #         percentage = int(percentage)
+    #         totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
+    #         totalCount = int(totalCount)
+    #
+    # else:
+    #     soup = BeautifulSoup(URL.content, 'html.parser')
+    #     if len(soup.find_all('div', 'subtitle column')) > 1:
+    #         reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')[1].string
+    #         reviewsTxt = reviewsTxt.strip()
+    #         percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
+    #         percentage = int(percentage)
+    #         totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
+    #         totalCount = int(totalCount)
+    #     else:
+    #         reviewsTxt = soup.find_all('span', 'responsive_reviewdesc')
+    #         if len(reviewsTxt) == 0:
+    #             return "-"
+    #         reviewsTxt = reviewsTxt[0].string.strip()
+    #         percentage = re.findall('^-\s(\d+)%', reviewsTxt)[0]
+    #         percentage = int(percentage)
+    #         totalCount = soup.find_all('meta', itemprop="reviewCount")[0].get('content')
+    #         totalCount = int(totalCount)
+    #
+    # return str(percentage) + "% of *" + "{:,}".format(totalCount) + " Reviews*"
 
 
 
@@ -138,6 +153,7 @@ def retrieve_bundles(plain):
         #to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
         #array.append(to_push)
         if not element["bundle"] in invalidBundles:
+            print "Following bundle:", element['bundle'], "not in the list"
             appBundled += 1
 
     if appBundled > 0:
