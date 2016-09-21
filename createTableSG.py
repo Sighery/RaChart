@@ -38,7 +38,8 @@ def itad_sub_plain(subID):
     return jsonFile['data']['sub/' + str(subID)]
 
 
-# This function is deprecated
+# This function is DEPRECATED. Used ITAD but it's not always recent and
+# there is no need for it anymore with the new review system
 def retrieve_percentage(plain):
     string = "https://api.isthereanydeal.com/v01/game/info/?key=" + ITADKey + "&plains=" + plain
     jsonFile = json.loads(urllib.urlopen(string).read())
@@ -54,13 +55,23 @@ def steam_rating(appID):
     URL = requests.get("http://store.steampowered.com/appreviews/" + str(appID) + "?start_offset=0&day_range=30&filter=summary&language=all&review_type=all&purchase_type=all")
 
     jsonf = URL.json()
+
+    # Case to handle removed games that have no store page anymore or simply don't exist
+    if jsonf['success'] == 2:
+        return "-"
+
     soup = BeautifulSoup(jsonf['review_score'], 'html.parser')
+    percentage = soup.find_all('span')[1]
+
+    # In case the game has no reviews or hasn't been released yet:
+    if percentage['data-store-tooltip'] == "No user reviews":
+        return "-"
+
+    percentage = re.findall("(\d+)%", percentage['data-store-tooltip'])[0]
     total = soup.find_all('span')[0]
     total = total.string.replace(",", "")
     total = re.findall('(\d+)\s', total)[0]
     total = "{:,}".format(int(total))
-    percentage = soup.find_all('span')[1]
-    percentage = re.findall("(\d+)%", percentage['data-store-tooltip'])[0]
 
     return "%s%% of *%s Reviews*" % (percentage, total)
 
