@@ -7,13 +7,11 @@ from bs4 import BeautifulSoup
 import requests
 import re
 import logging
-#from urllib2 import Request, urlopen
-#request = Request('https://api.isthereanydeal.com/v02/game/plain/?key=ITADAPIKEY&shop=steam&game_id=app%2F377160&url=url&title=title&optional=optional')
 
-#response_body = urlopen(request).read()
-#print response_body
+# Create a JSON file with a key "ITAD" and value API key. The key will be
+# fetched from it. The syntax for the file should look similar to this:
+# {"ITAD": "API-Key-Here"}
 
-# Put here your ITAD API key | DEPRECATED
 ITADKey = ""
 with open("keys.json") as keys_file:
     keys = json.load(keys_file)
@@ -134,6 +132,70 @@ def retrieve_price(plain):
             return element['price_old']
 
 
+def price_from_pack(app_json, appID):
+    #app_json = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID)))
+    ## Some games actually have a price, but since they also have a demo
+    # Steam will count them as free, even though they are not. That's why we
+    # check all the packages containing the game, if some package isn't free
+    # too that means it's one of those weird free demo cases (check app 253510)
+    # After thinking it is not a good idea since there is no difference between
+    # actual free apps and that case. So we'll keep an array with those free
+    # demo games for now.
+    special_games = [253510]
+
+    # Not used for now
+    #bPacksFree = True;
+    #if len(app_json[str(appID)]['data']['packages']) > 0:
+    #    for index, element in enumerate(app_json[str(appID)]['data']['package_groups']):
+    #        for pack in app_json[str(appID)]['data']['package_groups'][index]['subs']:
+    #            if pack['is_free_license'] == False:
+    #                bPacksFree = False
+    #                break
+    if (app_json[str(appID)]['data']['is_free'] or "price_overview" in app_json[str(appID)]['data'] == False) and not appID in special_games:
+        return 0
+    if app_json[str(appID)]['data']['type'] == "video":
+        nPacks = len(app_json[str(appID)]['data']['packages'])
+        if nPacks > 0:
+            subID = app_json[str(appID)]['data']['packages'][0]
+            subJSON = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID) + "&cc=us"))
+
+            ### For movies the possible packages are always:
+            # A. Rent package; B. Buy package; C. Multi-items package
+            # A and C may be missing, but there will always be at least B
+            # Or A may be missing but there may be multiple C
+            # But if you take the first package, and ends up being rent,
+            # you can get the buy price by getting "individual" from the "price"
+            # dict, and get the rent price by getting "initial" from that same dict.
+            # This will only work if there are A, B and C or only A and B. Won't
+            # work if there are B and C since individual will have the price
+            # of the second package on "individual" instead.
+
+            # If there is just a single package then there is only B and we
+            # can safely use "initial" or "individual" price
+            if nPacks == 1:
+                return subJSON[str(subID)]['data']['price']['initial'] / 100.0
+            # If there are 2 packages we should check if it's actually
+            # a C or just that the first was an A and this a B
+            elif nPacks > 1:
+                subID2 = app_json[str(appID)]['data']['packages'][1]
+                subJSON2 = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID2) + "&cc=us"))
+                if len(subJSON2[str(subID2)]['data']['apps']) > 1:
+                    # This means this is a C, we will return "initial" price
+                    # from first package then
+                    return subJSON[str(subID)]['data']['price']['initial'] / 100.0
+                else:
+                    # This means this is actually a B and the first was an A
+                    # We can either return this "initial" or the first's "individual"
+                    return subJSON2[str(subID2)]['data']['price']['initial'] / 100.0
+
+    else:
+        # This means the given appID isn't a movie so we can simply take the
+        # first package and get the price of it
+        subID = app_json[str(appID)]['data']['packages'][0]
+        subJSON = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID) + "&cc=us"))
+        return subJSON[str(subID)]['data']['price']['initial'] / 100.0
+
+
 
 def loop_package(subID):
     appCards = "-"
@@ -155,28 +217,28 @@ def loop_package(subID):
 
 
 def retrieve_bundles(plain):
-    array = []
+    #array = []
     string = "https://api.isthereanydeal.com/v01/game/bundles/us/?key=" + ITADKey + "&limit=-1&expired=1&plains=" + plain
-    jsonFile = json.loads(urllib.urlopen(string).read())
+    jsonFile = json.load(urllib.urlopen(string))
     appBundled = 0
     for element in jsonFile['data'][plain]['list']:
         # This method is deprecated
         #to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
         #array.append(to_push)
         if not element["bundle"] in invalidBundles:
-            # print "Following bundle:", element['bundle'], "not in the list"
+            #print "Following bundle:", element['bundle'], "not in the list"
             appBundled += 1
 
     if appBundled > 0:
-        appBundled = "[" + str(appBundled) + "](" + jsonFile['data'][plain]['urls']['game'] + ")"
+        appBundled = "[" + str(appBundled) + "](" + jsonFile['data'][plain]['urls']['bundles'] + ")"
     else:
         appBundled = "0"
     return appBundled
 
 try:
-    print "Type '!done' without the quotes to stop the program. Type '!next' to go to the next tier. Type '!package' or '!pack' to go into the package mode. None of the commands are case sensitive, so it doesn't matter if you type it with capital letters or not. The same goes for game's titles, but be careful with stuff like - : etc in the title or typing 2 instead of II, the program won't be able to find the game in those cases."
+    print "Type '!done' without the quotes to stop the program. Type '!next' to go to the next tier. Type '!package' or '!pack' to go into the package mode. Use '!next' to move to the next tier and '!cancel' to cancel an ongoing search. You can confirm by either typing 'Yes', 'Y' or simply pressing Enter will do; type 'No' or 'N' when you are prompted with something you weren't searching for. None of the commands are case sensitive, so it doesn't matter if you type it with capital letters or not. The same goes for game's titles, but be careful with stuff like - : etc in the title or typing 2 instead of II, the program won't be able to find the game in those cases."
 
-    SteamAppsjson = json.loads(urllib.urlopen("http://api.steampowered.com/ISteamApps/GetAppList/v002/").read())
+    SteamAppsjson = json.load(urllib.urlopen("http://api.steampowered.com/ISteamApps/GetAppList/v002/"))
     confirmation = 0
     tierInp = raw_input("Enter the number of tiers: ")
     tierDict = {}
@@ -199,15 +261,15 @@ try:
             packInp = raw_input("Enter the base game title to search for the packages its in: ")
 
         for app in SteamAppsjson['applist']['apps']:
-            if packInp != None and packInp.lower() in app['name'].lower():
+            if packInp != None and packInp.lower() in app['name'].lower().encode('ascii', 'ignore'):
                 appID = app['appid']
-                tryAppID = json.loads(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english").read())
+                #tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
 
-                if tryAppID[str(appID)]['success'] == False or tryAppID[str(appID)]['data']['type'] == "movie" or tryAppID[str(appID)]['data']['type'] == "demo" or tryAppID[str(appID)]['data']['type'] == "mod":
-                    # print "AppID", appID, "wasn't valid, skipping to the next one"
-                    continue
+                #if tryAppID[str(appID)]['success'] == False or tryAppID[str(appID)]['data']['type'] == "movie" or tryAppID[str(appID)]['data']['type'] == "demo" or tryAppID[str(appID)]['data']['type'] == "mod":
+                    #print "AppID", appID, "wasn't valid, skipping to the next one"
+                    #continue
 
-                print "There is a", tryAppID[str(appID)]['data']['type'], "called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
                 confirmation2 = 0
                 while True:
                     if confirmation2 == 1:
@@ -224,6 +286,7 @@ try:
                         # print "Yep, '" + app['name'] + "' is there, the appID is:", app['appid']
                         confirmation3 = 0
                         appID = app['appid']
+                        tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
                         for element in range(len(tryAppID[str(appID)]['data']['package_groups'][0]['subs'])):
                             if confirmation2 == 1:
                                 confirmation = 1
@@ -234,7 +297,7 @@ try:
                                 # print "elif confirmation3, value confirmation2: " + str(confirmation2)
                                 break
                             subID = tryAppID[str(appID)]['data']['package_groups'][0]['subs'][element]['packageid']
-                            subJson = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID)))
+                            subJson = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID) + "&cc=us"))
                             if subJson[str(subID)]['success'] == True:
                                 # if confirmation2 == 1:
                                 #     break
@@ -243,27 +306,32 @@ try:
                                     print "This game is in a package called: '" + unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore') + "'"
                                     subConfInp = raw_input("Is this what you are looking for? (Y/n) ")
                                     if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y' or subConfInp.lower() == '':
+                                        plain = itad_sub_plain(subID)
                                         appName = unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore')
-                                        # Price ITAD way
-                                        appPrice = retrieve_price(itad_sub_plain(subID))
+                                        # Price ITAD way, DEPRECATED
+                                        #appPrice = retrieve_price(itad_sub_plain(subID))
+                                        # Price sub US way
+                                        if "price" in subJson[str(subID)]['data'] != False:
+                                            appPrice = subJson[str(subID)]['data']['final'] / 100.0
+                                        else: appPrice = 0
                                         if appPrice == 0:
                                             appPrice = "-"
                                         else:
                                             retailPrice += appPrice
-                                            appPrice = "$" + str(appPrice)
+                                            appPrice = "[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
                                         # Price Steam way
                                         # if subJson[str(subID)]['data'].get("price") != None:
                                         #     appPrice = float(subJson[str(subID)]['data']['price']['initial'])/100
                                         #     retailPrice += appPrice
-                                        #     appPrice = "$" + str(appPrice)
+                                        #     appPr"type" in ice = "$" + str(appPrice)
                                         # else:
                                         #     appPrice = "-"
 
                                         appCards = loop_package(subID)
                                         appReviews = "-"
 
-                                        appBundled = retrieve_bundles(itad_sub_plain(subID));
+                                        appBundled = retrieve_bundles(plain);
                                         # This method is deprecated
                                         #retrievedBundles = retrieve_bundles(itad_sub_plain(subID))
                                         #for element in retrievedBundles[0]:
@@ -352,15 +420,15 @@ try:
                         tierDict['5'].append(to_push)
                     break
 
-            elif gamesInp.lower() in app['name'].lower():
+            elif gamesInp.lower() in app['name'].lower().encode('ascii', 'ignore'):
                 appID = app['appid']
-                tryAppID = json.loads(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english").read())
+                #tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
 
-                if tryAppID[str(appID)]['success'] == False or tryAppID[str(appID)]['data']['type'] == "movie":
+                #if tryAppID[str(appID)]['success'] == False or tryAppID[str(appID)]['data']['type'] == "movie":
                     # print "AppID", appID, "wasn't valid, skipping to the next one"
-                    continue
+                    #continue
 
-                print "There is a", tryAppID[str(appID)]['data']['type'], "called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
 
                 while True:
                     confInp = raw_input("Is this what you are looking for? (Y/n) ")
@@ -368,6 +436,7 @@ try:
                     if  confInp.lower() == 'yes' or confInp.lower() == 'y' or confInp.lower() == '':
                         # print "Yep, '" + app['name'] + "' is there, the appID is:", app['appid']
                         appID = app['appid']
+                        tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
                         confirmation = 1
                         break
                     elif confInp.lower() == 'no' or confInp.lower() == 'n':
@@ -384,13 +453,15 @@ try:
                 if confirmation == 1:
                     appName = unicodedata.normalize('NFC', tryAppID[str(appID)]['data']['name']).encode('ascii','ignore')
                     appLink = "**[" + appName + "](http://store.steampowered.com/app/" + str(appID) + "/)**"
-                    # Price ITAD way
-                    appPrice = retrieve_price(itad_plain(appID))
+                    # Price ITAD way, DEPRECATED
+                    #appPrice = retrieve_price(itad_plain(appID))
+                    plain = itad_plain(appID)
+                    appPrice = price_from_pack(tryAppID, appID)
                     if appPrice == 0:
                         appPrice = "-"
                     else:
                         retailPrice += appPrice
-                        appPrice = "$" + str(appPrice)
+                        appPrice = "[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
                     #Price Steam way
                     # if tryAppID[str(appID)]['data'].get("price_overview") != None and tryAppID[str(appID)]['data']['is_free'] == False:
@@ -404,8 +475,12 @@ try:
                     if 'categories' in tryAppID[str(appID)]['data'] != False:
                         for cardsinfo in tryAppID[str(appID)]['data']['categories']:
                             if cardsinfo['id'] == 29:
-                                appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
-                                break
+                                if tryAppID[str(appID)]['data']['type'] == "dlc":
+                                    appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(tryAppID[str(appID)]['data']['fullgame']['appid']) + ")"
+                                    break
+                                else:
+                                    appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
+                                    break
                     if appCards == "-":
                         cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
                         trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + str(appID))
@@ -415,8 +490,8 @@ try:
                     # appReviews = retrieve_percentage(itad_plain(appID))
                     # if appReviews != "-":
                     #     appReviews = str(appReviews) + "%"
-                    appBundled = retrieve_bundles(itad_plain(appID));
-                    # This method is deprecated
+                    appBundled = retrieve_bundles(plain);
+                    # This method is DEPRECATED
                     #retrievedBundles = retrieve_bundles(itad_plain(appID))
                     #for element in retrievedBundles[0]:
                     #    bundleInp = raw_input(element)
