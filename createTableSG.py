@@ -240,7 +240,12 @@ try:
 
     SteamAppsjson = json.load(urllib.urlopen("http://api.steampowered.com/ISteamApps/GetAppList/v002/"))
     confirmation = 0
-    tierInp = raw_input("Enter the number of tiers: ")
+    while True:
+        tierInp = raw_input("Enter the number of tiers: ")
+        if tierInp.isdigit():
+            break
+        else:
+            print "You didn't enter a number"
     tierDict = {}
     for number in range(1, int(tierInp) + 1):
         tierDict[str(number)] = [];
@@ -269,7 +274,7 @@ try:
                     #print "AppID", appID, "wasn't valid, skipping to the next one"
                     #continue
 
-                print "There is an app called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app with ID " + str(appID) + " called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
                 confirmation2 = 0
                 while True:
                     if confirmation2 == 1:
@@ -287,6 +292,11 @@ try:
                         confirmation3 = 0
                         appID = app['appid']
                         tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
+                        if tryAppID[str(appID)]['success'] == False:
+                            print "The game you picked is either removed from the store or not available in your region"
+                            confirmation = 2
+                            packInp = None
+                            break
                         for element in range(len(tryAppID[str(appID)]['data']['package_groups'][0]['subs'])):
                             if confirmation2 == 1:
                                 confirmation = 1
@@ -303,7 +313,7 @@ try:
                                 #     break
 
                                 while True:
-                                    print "This game is in a package called: '" + unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore') + "'"
+                                    print "This game is in a package with ID " + str(subID) + " called: '" + unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore') + "'"
                                     subConfInp = raw_input("Is this what you are looking for? (Y/n) ")
                                     if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y' or subConfInp.lower() == '':
                                         plain = itad_sub_plain(subID)
@@ -356,9 +366,11 @@ try:
                                         break
                                     elif subconfInp.lower() == '!cancel':
                                         confirmation2 = 2
+                                        packInp = None
                                         break
                                     else:
                                         print "Sorry, something you typed is not right, the valid commands are 'yes', 'y', 'no' or 'n'. They are case insensitive."
+                                        packInp = None
                     elif confInp.lower() == 'no' or confInp.lower() == 'n':
                         break
                     elif confInp.lower() == '!cancel':
@@ -428,7 +440,7 @@ try:
                     # print "AppID", appID, "wasn't valid, skipping to the next one"
                     #continue
 
-                print "There is an app called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app with ID " + str(appID) + " called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
 
                 while True:
                     confInp = raw_input("Is this what you are looking for? (Y/n) ")
@@ -437,6 +449,10 @@ try:
                         # print "Yep, '" + app['name'] + "' is there, the appID is:", app['appid']
                         appID = app['appid']
                         tryAppID = json.load(urllib.urlopen("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&l=english"))
+                        if tryAppID[str(appID)]["success"] == False:
+                            print "The game you picked is either removed from the store or not available in your region"
+                            confirmation = 2
+                            break
                         confirmation = 1
                         break
                     elif confInp.lower() == 'no' or confInp.lower() == 'n':
