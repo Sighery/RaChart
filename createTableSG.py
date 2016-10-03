@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import urllib
 import urllib2
-import unicodedata
 import json
 from bs4 import BeautifulSoup
 import requests
@@ -71,7 +70,7 @@ def steam_rating(appID):
     total = re.findall('(\d+)\s', total)[0]
     total = "{:,}".format(int(total))
 
-    return "%s%% of *%s Reviews*" % (percentage, total)
+    return u"%s%% of *%s Reviews*" % (percentage, total)
 
     # Deprecated with the new review system now Steam uses ajax for the info
     # We can request that instead. Uses less space and has no checks at all.
@@ -143,15 +142,15 @@ def price_from_pack(app_json, appID):
     # demo games for now.
     special_games = [253510]
 
-    # Not used for now
-    #bPacksFree = True;
+    # Not used anymore
+    #bPacksFree = True
     #if len(app_json[str(appID)]['data']['packages']) > 0:
     #    for index, element in enumerate(app_json[str(appID)]['data']['package_groups']):
     #        for pack in app_json[str(appID)]['data']['package_groups'][index]['subs']:
     #            if pack['is_free_license'] == False:
     #                bPacksFree = False
     #                break
-    if (app_json[str(appID)]['data']['is_free'] or "price_overview" in app_json[str(appID)]['data'] == False) and not appID in special_games:
+    if (app_json[str(appID)]['data']['is_free'] and "price_overview" in app_json[str(appID)]['data'] == False) and not appID in special_games:
         return 0
     if app_json[str(appID)]['data']['type'] == "video":
         nPacks = len(app_json[str(appID)]['data']['packages'])
@@ -198,7 +197,7 @@ def price_from_pack(app_json, appID):
 
 
 def loop_package(subID):
-    appCards = "-"
+    appCards = u"-"
     subJson = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID)))
 
     for element in subJson[str(subID)]['data']['apps']:
@@ -209,7 +208,8 @@ def loop_package(subID):
             for category in appJson[str(element['id'])]['data']['categories']:
                 if category['id'] == 29:
                     # print appJson[str(element['id'])]['data']['name'] + ": Yes"
-                    appCards = "&#10084;"
+                    #appCards = "&#10084;"
+                    appCards = u"\u2764"
                     return appCards
 
     return appCards
@@ -248,8 +248,8 @@ try:
             print "You didn't enter a number"
     tierDict = {}
     for number in range(1, int(tierInp) + 1):
-        tierDict[str(number)] = [];
-    current_tier = 1;
+        tierDict[str(number)] = []
+    current_tier = 1
     packInp = None
     retailPrice = 0
 
@@ -274,7 +274,7 @@ try:
                     #print "AppID", appID, "wasn't valid, skipping to the next one"
                     #continue
 
-                print "There is an app with ID " + str(appID) + " called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','ignore') + "'"
                 confirmation2 = 0
                 while True:
                     if confirmation2 == 1:
@@ -313,11 +313,11 @@ try:
                                 #     break
 
                                 while True:
-                                    print "This game is in a package with ID " + str(subID) + " called: '" + unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore') + "'"
+                                    print "This game is in a package with ID " + str(subID) + " called: '" + subJson[str(subID)]['data']['name'].encode('ascii', 'ignore') + "'"
                                     subConfInp = raw_input("Is this what you are looking for? (Y/n) ")
                                     if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y' or subConfInp.lower() == '':
                                         plain = itad_sub_plain(subID)
-                                        appName = unicodedata.normalize('NFC', subJson[str(subID)]['data']['name']).encode('ascii', 'ignore')
+                                        appName = unicode(subJson[str(subID)]['data']['name'])
                                         # Price ITAD way, DEPRECATED
                                         #appPrice = retrieve_price(itad_sub_plain(subID))
                                         # Price sub US way
@@ -325,10 +325,10 @@ try:
                                             appPrice = subJson[str(subID)]['data']['final'] / 100.0
                                         else: appPrice = 0
                                         if appPrice == 0:
-                                            appPrice = "-"
+                                            appPrice = u"-"
                                         else:
                                             retailPrice += appPrice
-                                            appPrice = "[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
+                                            appPrice = u"[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
                                         # Price Steam way
                                         # if subJson[str(subID)]['data'].get("price") != None:
@@ -339,9 +339,9 @@ try:
                                         #     appPrice = "-"
 
                                         appCards = loop_package(subID)
-                                        appReviews = "-"
+                                        appReviews = u"-"
 
-                                        appBundled = retrieve_bundles(plain);
+                                        appBundled = retrieve_bundles(plain)
                                         # This method is deprecated
                                         #retrievedBundles = retrieve_bundles(itad_sub_plain(subID))
                                         #for element in retrievedBundles[0]:
@@ -400,7 +400,7 @@ try:
                     # appReviews = steam_rating(appID)
                     # appReviews = retrieve_percentage(itad_plain(appID))
                     # appReviews = str(appReviews) + "%"
-                    # appBundled = 0;
+                    # appBundled = 0
                     # for element in retrieve_bundles(itad_plain(appID)):
                     #     bundleInp = raw_input(element)
                     #     if bundleInp.lower() == "yes" or bundleInp.lower() == "y":
@@ -440,7 +440,7 @@ try:
                     # print "AppID", appID, "wasn't valid, skipping to the next one"
                     #continue
 
-                print "There is an app with ID " + str(appID) + " called '" + unicodedata.normalize('NFC', app['name']).encode('ascii','ignore') + "'"
+                print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','ignore') + "'"
 
                 while True:
                     confInp = raw_input("Is this what you are looking for? (Y/n) ")
@@ -467,17 +467,17 @@ try:
                     break
 
                 if confirmation == 1:
-                    appName = unicodedata.normalize('NFC', tryAppID[str(appID)]['data']['name']).encode('ascii','ignore')
+                    appName = unicode(tryAppID[str(appID)]['data']['name'])
                     appLink = "**[" + appName + "](http://store.steampowered.com/app/" + str(appID) + "/)**"
                     # Price ITAD way, DEPRECATED
                     #appPrice = retrieve_price(itad_plain(appID))
                     plain = itad_plain(appID)
                     appPrice = price_from_pack(tryAppID, appID)
                     if appPrice == 0:
-                        appPrice = "-"
+                        appPrice = u"-"
                     else:
                         retailPrice += appPrice
-                        appPrice = "[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
+                        appPrice = u"[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
                     #Price Steam way
                     # if tryAppID[str(appID)]['data'].get("price_overview") != None and tryAppID[str(appID)]['data']['is_free'] == False:
@@ -487,26 +487,26 @@ try:
                     # else:
                     #     appPrice = "-"
 
-                    appCards = "-"
+                    appCards = u"-"
                     if 'categories' in tryAppID[str(appID)]['data'] != False:
                         for cardsinfo in tryAppID[str(appID)]['data']['categories']:
                             if cardsinfo['id'] == 29:
                                 if tryAppID[str(appID)]['data']['type'] == "dlc":
-                                    appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(tryAppID[str(appID)]['data']['fullgame']['appid']) + ")"
+                                    appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(tryAppID[str(appID)]['data']['fullgame']['appid']) + ")"
                                     break
                                 else:
-                                    appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
+                                    appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appID) + ")"
                                     break
                     if appCards == "-":
                         cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
                         trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + str(appID))
                         if not "Game not found!" in trySCE.read():
-                            appCards = '[&#10084;](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
+                            appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
                     appReviews = steam_rating(appID)
                     # appReviews = retrieve_percentage(itad_plain(appID))
                     # if appReviews != "-":
                     #     appReviews = str(appReviews) + "%"
-                    appBundled = retrieve_bundles(plain);
+                    appBundled = retrieve_bundles(plain)
                     # This method is DEPRECATED
                     #retrievedBundles = retrieve_bundles(itad_plain(appID))
                     #for element in retrievedBundles[0]:
@@ -532,6 +532,16 @@ try:
                     # print "GAME | REVIEWS | CARDS | BUNDLED | RETAIL PRICE"
                     # print ":- | :-: | :-: | :-: | :-:"
                     # print appLink, " | ", appReviews, " | ", appCards, " | ", str(appBundled), " | ", appPrice
+                    # print type(appLink)
+                    # print type(appReviews)
+                    # print type(appCards)
+                    # print type(appBundled)
+                    # print type(appPrice)
+                    # print appLink + " | "
+                    # print appReviews + " | "
+                    # print appCards + " | "
+                    # print appBundled + " | "
+                    # print " | " + appPrice
                     to_push = appLink + " | " + appReviews + " | " + appCards + " | " + appBundled + " | " + appPrice
                     if current_tier == 1:
                         tierDict['1'].append(to_push)
@@ -550,15 +560,15 @@ try:
 
         confirmation = 0
 
-    file = open('tableSG.txt', 'w')
+    file = open('chartSG.txt', 'w')
     if len(tierDict) == 1:
         file.write("GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
         file.write(":- | :-: | :-: | :-: | :-:\n")
         print "GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE"
         print ":- | :-: | :-: | :-: | :-:"
         for element in tierDict["1"]:
-            file.write(element + "\n")
-            print element
+            file.write(element.encode("UTF-8") + "\n")
+            print element.encode('ascii', 'replace')
         print "Retail: $" + str(retailPrice)
         file.write("\nRetail: $" + str(retailPrice))
     else:
@@ -569,15 +579,15 @@ try:
             print "GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE"
             print ":- | :-: | :-: | :-: | :-:"
             for element in tierDict[str(number)]:
-                file.write(element + "\n")
-                print element
+                file.write(element.encode("UTF-8") + "\n")
+                print element.encode('ascii', 'replace')
         print "Retail: $" + str(retailPrice)
         file.write("\nRetail: $" + str(retailPrice))
 
     file.close()
-    print "\nA new text file called 'tableSG' has been created here in this folder, just open it and the table will be there available to be copied\n'"
+    print "\nA new text file called 'chartSG' has been created here in this folder, just open it and the table will be there available to be copied\n'"
     raw_input("Press Enter or close the window to exit")
 except:
-    print "There was an error, please copy this (or make a screenshot) and give it to Sighery if you don't want the guy to go crazy trying to figure out what happened. Also try to remember the last thing you typed or did before it blowed up, it would help a lot."
+    print "\nThere was an error, please copy this (or make a screenshot) and give it to Sighery if you don't want the guy to go crazy trying to figure out what happened. Also try to remember the last thing you typed or did before it blowed up, it would help a lot."
     logging.exception('')
     raw_input("Press Enter or close the window to exit")
