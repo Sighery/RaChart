@@ -1,19 +1,18 @@
 // ==UserScript==
 // @name         RaChart™ Enhancer
-// @namespace    Sighery
-// @version      0.27.7
-// @description  Enhances Rachel's charts in SG by highlighting you the games you own already
 // @author       Sighery
+// @description  Enhances Rachel's charts in SG by highlighting you the games you own already
+// @version      0.27.7
 // @icon         http://www.sighery.com/favicon.ico
 // @downloadURL  http://www.sighery.com/code/JavaScript/RaChartEnhancer.user.js
 // @updateURL    http://www.sighery.com/code/JavaScript/RaChartEnhancer.meta.js
 // @supportURL   https://www.steamgifts.com/discussion/riOvr/
+// @namespace    Sighery
 // @match        https://www.steamgifts.com/*
-// @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
-// @grant        GM_log
+// @grant        GM_xmlhttpRequest
 // @connect      api.steampowered.com
 // @connect      store.steampowered.com
 // ==/UserScript==

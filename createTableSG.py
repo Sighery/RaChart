@@ -152,11 +152,20 @@ def price_from_pack(app_json, appID):
     #                break
     if (app_json[str(appID)]['data']['is_free'] and "price_overview" in app_json[str(appID)]['data'] == False) and not appID in special_games:
         return 0
+
+    if "price_overview" in app_json[str(appID)]['data'] and app_json[str(appID)]['data']['price_overview']['currency'] == 'USD':
+        return app_json[str(appID)]['data']['price_overview']['initial'] / 100.0
+
     if app_json[str(appID)]['data']['type'] == "video":
         nPacks = len(app_json[str(appID)]['data']['packages'])
         if nPacks > 0:
             subID = app_json[str(appID)]['data']['packages'][0]
             subJSON = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID) + "&cc=us"))
+            # If the subJSON returns "success" false that means that most probably
+            # that package is unavailable to buy in the US, return local price of
+            # app_json
+            if subJSON[str(subID)]['success'] == False:
+                return app_json[str(appID)]['data']['price_overview']['initial'] / 100.0
 
             ### For movies the possible packages are always:
             # A. Rent package; B. Buy package; C. Multi-items package
@@ -192,6 +201,11 @@ def price_from_pack(app_json, appID):
         # first package and get the price of it
         subID = app_json[str(appID)]['data']['packages'][0]
         subJSON = json.load(urllib.urlopen("http://store.steampowered.com/api/packagedetails/?packageids=" + str(subID) + "&cc=us"))
+        # If the subJSON returns "success" false that means that most probably
+        # that package is unavailable to buy in the US, return local price of
+        # app_json
+        if subJSON[str(subID)]['success'] == False:
+            return app_json[str(appID)]['data']['price_overview']['initial'] / 100.0
         return subJSON[str(subID)]['data']['price']['initial'] / 100.0
 
 
