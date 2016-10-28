@@ -49,7 +49,7 @@ def retrieve_percentage(plain):
 
 
 def steam_rating(appID):
-    URL = requests.get("http://store.steampowered.com/appreviews/" + str(appID) + "?start_offset=0&day_range=30&filter=summary&language=all&review_type=all&purchase_type=all")
+    URL = requests.get("http://store.steampowered.com/appreviews/%d?filter=summary&language=all&review_type=all&purchase_type=all" % appID)
 
     jsonf = URL.json()
 
@@ -237,6 +237,7 @@ def retrieve_bundles(plain):
     appBundled = 0
     for element in jsonFile['data'][plain]['list']:
         # This method is deprecated
+        #print "It was on: %s by %s" % (element['title'], element['bundle'])
         #to_push = "This game was featured in a bundle called " + "'" + element['title'] + "'" + " by " + "'" + element['bundle'] + "'" + ". Do you want to add it to the bundle count? "
         #array.append(to_push)
         if not element["bundle"] in invalidBundles:
@@ -336,7 +337,7 @@ try:
                                         #appPrice = retrieve_price(itad_sub_plain(subID))
                                         # Price sub US way
                                         if "price" in subJson[str(subID)]['data'] != False:
-                                            appPrice = subJson[str(subID)]['data']['final'] / 100.0
+                                            appPrice = subJson[str(subID)]['data']['price']['initial'] / 100.0
                                         else: appPrice = 0
                                         if appPrice == 0:
                                             appPrice = u"-"
