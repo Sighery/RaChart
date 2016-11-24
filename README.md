@@ -2,6 +2,8 @@
 
 This repository will hold everything related to bundle threads in [SteamGifts](https://www.steamgifts.com) and the known as *RaChart* layout that I worked/I am working on. Please note that this is all work in progress.
 
+For now only `createTableSG.py` is released, but please note: it was my first program so the code and logic is a mess, it works, but a mess nevertheless. I'm basically in the works of rewritting it using OOP, so you would be better waiting for that. Once I release that new version, the old one will be pretty much legacy and discontinued.
+
 Right now I'm the only active developer for all you see, even though [Devotee](https://github.com/Michounet) also made some improvements to the `createTableSG.py` program. Feel free to chime in and help me developing stuff if you feel like it, you can contact me through here or [Steam](http://steamcommunity.com/id/Sighery), I'm usually more active on the latter.
 
 ## How to use it
