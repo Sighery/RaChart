@@ -234,6 +234,17 @@ def loop_package(subID):
 
 	return appCards
 
+def loop_package_sce(sceJson, subJson, subID):
+	count = 0
+	for element in subJson[str(subID)]['data']['apps']:
+		if str(element['id']) in sceJson:
+			count += 1
+
+	if count > 0:
+		return u"\u2764 x" + str(count)
+	else:
+		return u"-"
+
 
 def retrieve_bundles(plain):
 	#array = []
@@ -256,6 +267,15 @@ def retrieve_bundles(plain):
 
 try:
 	print "Type '!done' without the quotes to stop the program. Type '!next' to go to the next tier. Type '!appid' or '!subid' to search by ID directly. Type '!package' or '!pack' to go into the package mode. Use '!next' to move to the next tier and '!cancel' to cancel an ongoing search. You can confirm by either typing 'Yes', 'Y' or simply pressing Enter will do; type 'No' or 'N' when you are prompted with something you weren't searching for. None of the commands are case sensitive, so it doesn't matter if you type it with capital letters or not. The same goes for game's titles, but be careful with stuff like - : etc in the title or typing 2 instead of II, the program won't be able to find the game in those cases."
+
+	bapi_sce = False
+	sceJson = None
+	try:
+		sceJson = requests.get("http://api.steamcardexchange.net/GetBadgePrices.json", timeout=3)
+		sceJson = sceJson.json()
+		bapi_sce = True
+	except:
+		pass
 
 	bapi_sighery = False
 	try:
@@ -343,20 +363,30 @@ try:
 				appPrice = u"[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
 			appCards = u"-"
-			if 'categories' in appJson[appidInp]['data'] != False:
-				for cardsinfo in appJson[appidInp]['data']['categories']:
-					if cardsinfo['id'] == 29:
-						if appJson[appidInp]['data']['type'] == "dlc":
-							appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appJson[appidInp]['data']['fullgame']['appid']) + ")"
-							break
-						else:
-							appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appidInp) + ")"
-							break
-			if appCards == "-":
-				cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
-				trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + appidInp)
-				if not "Game not found!" in trySCE.read():
-					appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + appidInp + ")"
+			if bapi_sce:
+				if appJson[appidInp]['data']['type'] == "dlc":
+					if str(appJson[appidInp]['data']['fullgame']['appid']) in sceJson:
+						appCards = u"(Base game has cards)"
+				elif appidInp in sceJson:
+					appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appidInp) + ")"
+			else:
+				# OLD MANUAL WAY USING STEAM AND SCE AS BACKUP, DISCONTINUED
+				if 'categories' in appJson[appidInp]['data'] != False:
+					for cardsinfo in appJson[appidInp]['data']['categories']:
+						if cardsinfo['id'] == 29:
+							if appJson[appidInp]['data']['type'] == "dlc":
+							# 	appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appJson[appidInp]['data']['fullgame']['appid']) + ")"
+								appCards = u"(Base game has cards)"
+								break
+							else:
+								appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appidInp) + ")"
+								break
+				if appCards == "-":
+					cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
+					trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + appidInp)
+					if not "Game not found!" in trySCE.read():
+						appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + appidInp + ")"
+
 			appReviews = steam_rating(int(appidInp))
 			appBundled = retrieve_bundles(plain)
 
@@ -399,7 +429,11 @@ try:
 				tier_retail += appPrice
 				appPrice = u"[$%s](%s%s)" % (str(appPrice), "https://isthereanydeal.com/#/page:game/info?plain=", plain)
 
-			appCards = loop_package(int(subidInp))
+			appCards = u"-"
+			if bapi_sce:
+				appCards = loop_package_sce(sceJson, subJson, int(subidInp))
+			else:
+				appCards = loop_package(int(subidInp))
 			appReviews = u"-"
 			plain = itad_sub_plain(int(subidInp))
 			appBundled = retrieve_bundles(plain)
@@ -496,7 +530,12 @@ try:
 										# else:
 										#     appPrice = "-"
 
-										appCards = loop_package(subID)
+										appCards = u"-"
+										if bapi_sce:
+											appCards = loop_package_sce(sceJson, subJson, subID)
+										else:
+											appCards = loop_package(subID)
+
 										appReviews = u"-"
 
 										appBundled = retrieve_bundles(plain)
@@ -663,20 +702,30 @@ try:
 					#     appPrice = "-"
 
 					appCards = u"-"
-					if 'categories' in tryAppID[str(appID)]['data'] != False:
-						for cardsinfo in tryAppID[str(appID)]['data']['categories']:
-							if cardsinfo['id'] == 29:
-								if tryAppID[str(appID)]['data']['type'] == "dlc":
-									appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(tryAppID[str(appID)]['data']['fullgame']['appid']) + ")"
-									break
-								else:
-									appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appID) + ")"
-									break
-					if appCards == "-":
-						cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
-						trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + str(appID))
-						if not "Game not found!" in trySCE.read():
-							appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
+					if bapi_sce:
+						if tryAppID[str(appID)]['data']['type'] == "dlc":
+							if str(tryAppID[str(appID)]['data']['fullgame']['appid']) in sceJson:
+								appCards = u"(Base game has cards)"
+						elif str(appID) in sceJson:
+							appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appID) + ")"
+					else:
+						# OLD MANUAL WAY USING STEAM AND SCE AS BACKUP, DISCONTINUED
+						if 'categories' in tryAppID[str(appID)]['data'] != False:
+							for cardsinfo in tryAppID[str(appID)]['data']['categories']:
+								if cardsinfo['id'] == 29:
+									if tryAppID[str(appID)]['data']['type'] == "dlc":
+										#appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(tryAppID[str(appID)]['data']['fullgame']['appid']) + ")"
+										appCards = u"(Base game has cards)"
+										break
+									else:
+										appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + unicode(appID) + ")"
+										break
+						if appCards == "-":
+							cookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
+							trySCE = cookieOpener.open("http://www.steamcardexchange.net/index.php?gamepage-appid-" + str(appID))
+							if not "Game not found!" in trySCE.read():
+								appCards = u'[\u2764](http://www.steamcardexchange.net/index.php?gamepage-appid-' + str(appID) + ")"
+
 					appReviews = steam_rating(appID)
 					# appReviews = retrieve_percentage(itad_plain(appID))
 					# if appReviews != "-":
@@ -743,10 +792,11 @@ try:
 	file = open('chartSG.txt', 'w')
 	for number in range(1, len(tierDict) + 1):
 		if number is 1:
-			file.write("GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
+			file.write("###**Tier " + str(number) + ": $**")
 		else:
-			file.write("\nGAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
+			file.write("\n###**Tier " + str(number) + ": $**")
 
+		file.write("\nGAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
 		file.write(":- | :-: | :-: | :-: | :-:\n")
 		print
 		print "GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE"
@@ -755,15 +805,15 @@ try:
 			file.write(element.encode("UTF-8") + "\n")
 			print element.encode('ascii', 'replace')
 
-		print "Tier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail'])
-		file.write("\nTier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail']))
-
-		if bapi_sighery:
-			print "Tier " + str(number) + " CV: " + str(tierDict[str(number)]['cv'])
-			file.write("\nTier " + str(number) + " CV: " + str(tierDict[str(number)]['cv']) + "\n")
-		else:
-			print "Tier " + str(number) + " CV: "
-			file.write("\nTier " + str(number) + " CV: \n")
+		# print "Tier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail'])
+		# file.write("\nTier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail']))
+		#
+		# if bapi_sighery:
+		# 	print "Tier " + str(number) + " CV: " + str(tierDict[str(number)]['cv'])
+		# 	file.write("\nTier " + str(number) + " CV: " + str(tierDict[str(number)]['cv']) + "\n")
+		# else:
+		# 	print "Tier " + str(number) + " CV: "
+		# 	file.write("\nTier " + str(number) + " CV: \n")
 
 	# if len(tierDict) == 1:
 	# 	file.write("GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
@@ -777,18 +827,56 @@ try:
 
 
 
-	print "Total retail: $" + str(retailPrice)
-	file.write("\n\n**Total retail**: $" + str(retailPrice))
-	if bapi_sighery:
-		print "Total CV: " + str(cvPrice)
-		file.write("\n**Total CV**: " + str(cvPrice))
-	else:
-		print "Total CV: "
-		file.write("\n**Total CV**: ")
+	#print "###Retail:" + str(retailPrice)
+	file.write("\n\n###Retail:")
+	tier_string = "\n* Tier "
+	current_total = 0
+	for tier in range(1, len(tierDict) + 1):
+		current_total += tierDict[str(tier)]['retail']
+
+		if tier == 1:
+			tier_string += "1"
+		else:
+			tier_string += " + " + str(tier)
+
+		file.write(tier_string + " = *$" + str(current_total) + "*")
+
+
+	file.write("\n\n###CV:")
+	tier_string = "\n* Tier "
+	current_cv_total = 0
+	current_not_cv_total = 0
+	for tier in range(1, len(tierDict) + 1):
+		if tier == 1:
+			tier_string += "1"
+		else:
+			tier_string += " + " + str(tier)
+
+		if bapi_sighery:
+			if tier == 1:
+				current_cv_total += tierDict[str(tier)]['cv']
+				file.write(tier_string + " = *" + str(current_cv_total) + "*")
+			elif tier == 2:
+				current_cv_total += tierDict[str(tier)]['cv']
+				current_not_cv_total = current_cv_total
+				file.write(tier_string + " = *" + str(current_cv_total) + "*")
+			elif tier >= 3:
+				current_cv_total += tierDict[str(tier)]['cv']
+				current_not_cv_total += tierDict[str(tier)]['retail']
+				file.write(tier_string + " = *" + str(current_not_cv_total) + "* ~(If Tier " + str(tier) + " stays non-bundled, otherwise it is " + str(current_cv_total) + ")~")
+		else:
+			file.write(tier_string + " = ")
+
+	# if bapi_sighery:
+	# 	print "Total CV: " + str(cvPrice)
+	# 	file.write("\n**Total CV**: " + str(cvPrice))
+	# else:
+	# 	print "Total CV: "
+	# 	file.write("\n**Total CV**: ")
 
 	if len(free_games) > 0:
 		print "The following games have been free: " + ", ".join(free_games)
-		file.write("\n\n###Warning:\n**You can't create giveaways for the following games: \"" + "\", \"".join(free_games) + "\"**")
+		file.write("\n\n###Warning:\n**You cannot create giveaways for the following games: \"" + "\", \"".join(free_games) + "\"**")
 
 	file.close()
 	print "\nA new text file called 'chartSG' has been created here in this folder, just open it and the table will be there available to be copied\n'"
