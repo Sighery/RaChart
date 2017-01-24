@@ -156,7 +156,10 @@ def price_from_pack(app_json, appID):
 	#            if pack['is_free_license'] == False:
 	#                bPacksFree = False
 	#                break
-	if (app_json[str(appID)]['data']['is_free'] and "price_overview" in app_json[str(appID)]['data'] == False) and not appID in special_games:
+	if "packages" not in app_json[str(appID)]['data']:
+		return 0
+
+	if (app_json[str(appID)]['data']['is_free'] and "price_overview" not in app_json[str(appID)]['data']) and not appID in special_games:
 		return 0
 
 	if "price_overview" in app_json[str(appID)]['data'] and app_json[str(appID)]['data']['price_overview']['currency'] == 'USD':
@@ -456,7 +459,7 @@ try:
 					#print "AppID", appID, "wasn't valid, skipping to the next one"
 					#continue
 
-				print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','ignore') + "'"
+				print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','replace') + "'"
 				confirmation2 = 0
 				while True:
 					if confirmation2 == 1:
@@ -495,7 +498,7 @@ try:
 								#     break
 
 								while True:
-									print "This game is in a package with ID " + str(subID) + " called: '" + subJson[str(subID)]['data']['name'].encode('ascii', 'ignore') + "'"
+									print "This game is in a package with ID " + str(subID) + " called: '" + subJson[str(subID)]['data']['name'].encode('ascii', 'replace') + "'"
 									subConfInp = raw_input("Is this what you are looking for? (Y/n) ")
 									if subConfInp.lower() == 'yes' or subConfInp.lower() == 'y' or subConfInp.lower() == '':
 										plain = itad_sub_plain(subID)
@@ -643,7 +646,7 @@ try:
 					# print "AppID", appID, "wasn't valid, skipping to the next one"
 					#continue
 
-				print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','ignore') + "'"
+				print "There is an app with ID " + str(appID) + " called '" + app['name'].encode('ascii','replace') + "'"
 
 				while True:
 					confInp = raw_input("Is this what you are looking for? (Y/n) ")
@@ -798,12 +801,12 @@ try:
 
 		file.write("\nGAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n")
 		file.write(":- | :-: | :-: | :-: | :-:\n")
-		print
-		print "GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE"
-		print ":- | :-: | :-: | :-: | :-:"
+		# print
+		# print "GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE"
+		# print ":- | :-: | :-: | :-: | :-:"
 		for element in tierDict[str(number)]['games']:
 			file.write(element.encode("UTF-8") + "\n")
-			print element.encode('ascii', 'replace')
+			# print element.encode('ascii', 'replace')
 
 		# print "Tier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail'])
 		# file.write("\nTier " + str(number) + " retail: $" + str(tierDict[str(number)]['retail']))
@@ -875,8 +878,16 @@ try:
 	# 	file.write("\n**Total CV**: ")
 
 	if len(free_games) > 0:
-		print "The following games have been free: " + ", ".join(free_games)
-		file.write("\n\n###Warning:\n**You cannot create giveaways for the following games: \"" + "\", \"".join(free_games) + "\"**")
+		# print "The following games have been free: " + ", ".join(free_games)
+		# print free_games
+		# print type(free_games[0])
+		list_string = u", ".join(free_games)
+		list_string = u"\n\n###Warning:\n**You cannot create giveaways for the following games: \"" + list_string + u"\"**"
+		# print list_string
+		# elem2 = ", ".join(free_games)
+		# print type(list_string)
+		# print type(elem2)
+		file.write(list_string.encode("UTF-8"))
 
 	file.close()
 	print "\nA new text file called 'chartSG' has been created here in this folder, just open it and the table will be there available to be copied\n'"
