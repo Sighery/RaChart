@@ -162,7 +162,7 @@ def store_search(title):
 
 	return title
 
-
+bcompleted = False
 try:
 	new_file = open("chart.txt", "w")
 	new_file.write("GAME | \n")
