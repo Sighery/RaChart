@@ -56,6 +56,7 @@ to the bundle: ")
 		rc.get_bundled()
 		rc.create_json()
 		sg_format_chart(rc.chart)
+		print("\n\nNOTES FOR THIS BUNDLE (IF ANY):")
 		print(bstars.notes)
 
 
@@ -68,3 +69,65 @@ except:
 send it to Sighery.")
 	logging.exception('')
 	input("Press Enter or close the window to exit.")
+
+## This part of the code will be the introductory message that asks what mode
+## do you want to use,
+#         while True:
+#             input_type = input("Welcome, you are using the program to create \
+# charts, please type whether you want to use the 'auto' or 'manual' mode. Use \
+# 'info' for more information on what each does. ")
+#             if input_type.lower() == "manual":
+#                 self.bManual = True
+#                 break
+#             elif input_type.lower() == "auto":
+#                 break
+#             elif input_type.lower() == "info":
+#                 print("The program has to modes, automatic, choosen by typing \
+# 'auto' which allows you to simply give it the link of the bundle and the program \
+# itself takes care of doing all the work and manual mode, choosen by typing \
+# 'manual' which will rely on you to do all the work like setting the amount of \
+# tiers, prices, what games in each tier, and so on.")
+#             else: print("You didn't enter a valid argument, try again.")
+#
+#     def manual_input(self):
+#         '''
+#             This function will be used for getting things like the title, link,
+#         description, number of tiers and prices for each tier manually. Once
+#         that info is gathered it should use the same methods to set that info
+#         and create the chart that the automatic way uses.
+#         '''
+#
+#         print("You picked the manual mode. You'll now be asked how many tiers \
+# there are, and then you'll be asked the price of the tier, please use the \
+# following syntax so the program can correctly guess the price and currency: \
+# \n\t12.99 USD\nUse EUR for euros, USD for US dollars, CAD for Canadian dollars\
+# and GBP for British pounds, the number can be integer or decimal, doesn't \
+# matter. Once you set the number of tiers and price you'll be asked about \
+# the games in each tier.")
+#
+#         tier_input = None
+#         while True:
+#             tier_input = input("Enter the number of tiers: ")
+#             if tier_input.isdigit():
+#                 tier_input = int(tier_input)
+#                 break
+#             else:
+#                 print("You didn't enter a number, try again.")
+#
+#         price_input = None
+#         while True:
+#             price_input = input("Enter the price for the tier: ")
+#             price_input = price_input.strip()
+#             space = price_input.index(" ")
+#             print(space)
+#             valid_currencies = ['USD', 'EUR', 'CAD', 'GBP']
+#             print(price_input[space + 1:].upper())
+#             if price_input[space + 1:].upper() in valid_currencies:
+#                 try:
+#                     price = float(price_input[:space])
+#                     currency = price_input[space + 1:].upper()
+#                     break
+#                 except ValueError as error:
+#                     print("You didn't enter a valid number for the price")
+#             else:
+#                 print("You didn't enter a valid currency")
