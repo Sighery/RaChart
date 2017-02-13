@@ -798,25 +798,25 @@ def sg_format_chart(chart):
 				print("if, ultimo price")
 				if price in prices_format:
 					print("if, price in prices_format")
-					outfile.write(prices_format[price] % str(tier['price'][price]))
+					outfile.write(prices_format[price] % str(tier['price'][price] / 100))
 					print(prices_format[price] % str(tier['price'][price]))
 					outfile.write("**\n\n")
 					print("**\n\n")
 				else:
 					print("else, no price in prices_format")
-					outfile.write("%s %s**\n\n" % (str(tier['price'][price]), price))
+					outfile.write("%s %s**\n\n" % (str(tier['price'][price] / 100), price))
 					print("%s %s**\n\n" % (str(tier['price'][price]), price))
 			else:
 				print("else, no ultimo price")
 				if price in prices_format:
 					print("if, price in prices_format")
-					outfile.write(prices_format[price] % str(tier['price'][price]))
+					outfile.write(prices_format[price] % str(tier['price'][price] / 100))
 					print(prices_format[price] % str(tier['price'][price]))
 					outfile.write(" / ")
 					print(" / ")
 				else:
 					print("else, no price in prices_format")
-					outfile.write("%s %s / " % (str(tier['price'][price]), price))
+					outfile.write("%s %s / " % (str(tier['price'][price] / 100), price))
 					print("%s %s / " % (str(tier['price'][price]), price))
 
 		outfile.write("GAME | RATINGS | CARDS | BUNDLED | RETAIL PRICE\n:- | :-: | :-: | :-: | :-:\n")
@@ -871,12 +871,14 @@ def sg_format_chart(chart):
 				cv_total += 0.15 * game['price']
 
 		if chart['ntiers'] > 1:
-			outfile.write("Tier %d retail: $%s\n" % str(tier_total))
-			outfile.write("CV: %s\n\n" % str(tier_cv))
+			outfile.write("Tier %d retail: $%s\n" %(index_tier + 1, str(tier_total / 100)))
+			outfile.write("CV: %s\n\n" % str(tier_cv / 100))
 
 	if chart['ntiers'] > 1:
-		outfile.write("Total retail: $%s\n" % str(retail_total))
-		outfile.write("Total CV: %s\n\n" % str(cv_total))
+		outfile.write("Total retail: $%s\n" % str(retail_total / 100))
+		outfile.write("Total CV: %s\n\n" % str(cv_total / 100))
+
+
 
 	print('A file called %s.txt was created in the \'bundles\' folder' % chart['title'])
 
