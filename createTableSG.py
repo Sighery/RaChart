@@ -64,7 +64,16 @@ def steam_rating(appID):
 		return "-"
 
 	soup = BeautifulSoup(jsonf['review_score'], 'html.parser')
-	percentage = soup.find_all('span')[1]
+	percentage = soup.find_all('span')
+
+	if len(percentage) == 0:
+		return "-"
+	elif len(percentage) == 1:
+		total = percentage[0].string.replace(",", "")
+		total = re.findall('(\d+)\s', total)[0]
+		return u"- of *%s Reviews*" % (total)
+
+	percentage = percentage[1]
 
 	# In case the game has no reviews or hasn't been released yet:
 	if percentage['data-store-tooltip'] == "No user reviews":
@@ -274,7 +283,7 @@ try:
 	bapi_sce = False
 	sceJson = None
 	try:
-		sceJson = requests.get("http://api.steamcardexchange.net/GetBadgePrices.json", timeout=3)
+		sceJson = requests.get("http://api.steamcardexchange.net/GetBadgePrices.json", timeout=10)
 		sceJson = sceJson.json()
 		bapi_sce = True
 	except:
