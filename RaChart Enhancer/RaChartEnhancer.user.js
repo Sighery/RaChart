@@ -2,7 +2,7 @@
 // @name		 RaChart™ Enhancer
 // @author       Sighery
 // @description  Enhances Rachel's charts in SG by highlighting you the games you own already
-// @version	     0.30.1
+// @version	     0.30.2
 // @icon		 http://www.sighery.com/favicon.ico
 // @downloadURL  https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.user.js
 // @updateURL	 https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.meta.js
@@ -435,6 +435,10 @@ function injectFunctions() {
 		"	}",
 		"	if (ignoredColor !== null) {",
 		"		document.getElementById('RCE-IgnoredColor').value = ignoredColor;",
+		"	}",
+		"	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');",
+		"	if (bStoreMethod !== null) {",
+		"		document.getElementById('RCE-StoreMethod').checked = true;",
 		"	}",
 		"	var APIKey = localStorage.getItem('APIKey');",
 		"	var SteamID64 = localStorage.getItem('SteamID64');",
