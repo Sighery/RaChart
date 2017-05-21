@@ -2,7 +2,7 @@
 // @name		 RaChart™ Enhancer
 // @author       Sighery
 // @description  Enhances Rachel's charts in SG by highlighting you the games you own already
-// @version	     0.30.2
+// @version	     0.30.3
 // @icon		 http://www.sighery.com/favicon.ico
 // @downloadURL  https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.user.js
 // @updateURL	 https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.meta.js
@@ -33,16 +33,18 @@ if ((window.location.href.match(".steamgifts.com/discussion/") || window.locatio
 	var appIDs = apps[0];
 	var subIDs = apps[1];
 
-	if (bStoreMethod !== null && bStoreMethod !== undefined) {
-		storeMethodRequest(appIDs, subIDs);
-	} else if (checkIDAPI()) {
-		if (appIDs.length > 0) {
-			webApiOwnedRequest(appIDs);
-		}
+	if ((appIDs.length || subIDs.length) > 0) {
+		if (bStoreMethod !== null && bStoreMethod !== undefined) {
+			storeMethodRequest(appIDs, subIDs);
+		} else if (checkIDAPI()) {
+			if (appIDs.length > 0) {
+				webApiOwnedRequest(appIDs);
+			}
 
-		if (subIDs.length > 0) {
-			for (var i = 0; i < subIDs.length; i++) {
-				storefrontApiAppsInPack(subIDs[i]);
+			if (subIDs.length > 0) {
+				for (var i = 0; i < subIDs.length; i++) {
+					storefrontApiAppsInPack(subIDs[i]);
+				}
 			}
 		}
 	}
