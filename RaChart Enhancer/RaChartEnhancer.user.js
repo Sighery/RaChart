@@ -18,6 +18,15 @@
 // @require      http://www.kryogenix.org/code/browser/sorttable/sorttable.js
 // ==/UserScript==
 
+// ==================== CONSTANTS ====================
+// For easier remembering
+// highlight function types
+const HIGHLIGHT_OWNED = 0;
+const HIGHLIGHT_PARTIALLY_OWNED = 1;
+const HIGHLIGHT_WISHLIST = 2;
+const HIGHLIGHT_IGNORED = 3;
+
+
 
 // ==================== MAIN ====================
 refractorStorage();
@@ -31,6 +40,9 @@ if ((window.location.href.match(".steamgifts.com/discussion/") || window.locatio
 	var apps = scanTable();
 	var appIDs = apps[0];
 	var subIDs = apps[1];
+
+	// Add the CSS for being able to highlight rows
+	injectHighlightStyle();
 
 	if ((appIDs.length || subIDs.length) > 0) {
 		if (bStoreMethod !== null && bStoreMethod !== undefined) {
@@ -69,7 +81,7 @@ function storeMethodRequest(appIDs, subIDs) {
 			var i;
 
 			if (checkLoginStoreMethod(jsonFile) === false) {
-				if (checkIDAPI(false) === false) {
+				if (checkIDAPI() === false) {
 					GM_notification({
 						title: "RaChart™ Enhancer",
 						text: "Error: Not logged into the Steam store and not enough info to use the API.",
@@ -99,12 +111,12 @@ function storeMethodRequest(appIDs, subIDs) {
 			} else {
 				if (appIDs.length > 0) {
 					var notOwnedApps = orderedMatchingAlgorithm(appIDs, jsonFile.rgOwnedApps, function(appID) {
-						highlight("app/" + appID);
+						highlight('app/' + appID, HIGHLIGHT_OWNED);
 					});
 
 					if (notOwnedApps.length > 0) {
 						var notWishlistApps = orderedMatchingAlgorithm(notOwnedApps, jsonFile.rgWishlist, function(appID) {
-							highlightWishlist("app/" + appID);
+							highlight('app/' + appID, HIGHLIGHT_WISHLIST);
 						});
 
 						if (notWishlistApps.length > 0) {
@@ -113,7 +125,7 @@ function storeMethodRequest(appIDs, subIDs) {
 							var ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
 
 							orderedMatchingAlgorithm(notWishlistApps, ignoredApps, function(appID) {
-								highlightIgnored("app/" + appID);
+								highlight('app/' + appID, HIGHLIGHT_IGNORED);
 							});
 						}
 					}
@@ -121,7 +133,7 @@ function storeMethodRequest(appIDs, subIDs) {
 
 				if (subIDs.length > 0) {
 					var notOwnedPacks = orderedMatchingAlgorithm(subIDs, jsonFile.rgOwnedPackages, function(subID) {
-						highlight("sub/" + subID);
+						highlight('sub/' + subID, HIGHLIGHT_OWNED);
 					});
 
 					if (notOwnedPacks.length > 0) {
@@ -140,6 +152,9 @@ function storeMethodRequest(appIDs, subIDs) {
 									invalids.forEach(function(element) {
 										element.style.backgroundColor = "red";
 										element.title += " Invalid link";
+
+										// Maybe remove id from classList?
+										// element.classList.remove(id);
 									});
 								} else {
 									for (var i = 0; i < jsonPackFile[subID].data.apps.length; i++) {
@@ -149,12 +164,12 @@ function storeMethodRequest(appIDs, subIDs) {
 									var notMatchedApps = orderedMatchingAlgorithm(arrayApps, jsonFile.rgOwnedApps);
 
 									if (notMatchedApps.length === 0) {
-										highlight("sub/" + subID);
+										highlight('sub/' + subID, HIGHLIGHT_OWNED);
 									} else if (notMatchedApps.length !== arrayApps.length) {
-										highlightSub("sub/" + subID);
+										highlight('sub/' + subID, HIGHLIGHT_PARTIALLY_OWNED);
 									} else {
 										orderedMatchingAlgorithm([subID], jsonFile.rgIgnoredPackages, function(subID) {
-											highlightIgnored("sub/" + subID);
+											highlight('sub/' + subID, HIGHLIGHT_IGNORED);
 										});
 									}
 								}
@@ -165,7 +180,7 @@ function storeMethodRequest(appIDs, subIDs) {
 			}
 		},
 		ontimeout: function(response) {
-			if (checkIDAPI(false) === false) {
+			if (checkIDAPI() === false) {
 					GM_notification({
 						title: "RaChart™ Enhancer",
 						text: "Error: Not logged into the Steam store and not enough info to use the API.",
@@ -194,7 +209,7 @@ function storeMethodRequest(appIDs, subIDs) {
 			}
 		},
 		onerror: function(response) {
-			if (checkIDAPI(false) === false) {
+			if (checkIDAPI() === false) {
 					GM_notification({
 						title: "RaChart™ Enhancer",
 						text: "Error: Not logged into the Steam store and not enough info to use the API.",
@@ -240,7 +255,7 @@ function webApiOwnedRequest(appidsFilter, customFunction = null) {
 
 				if (jsonFile.response.game_count > 0) {
 					for (var i = 0; i < jsonFile.response.games.length; i++) {
-						highlight("app/" + jsonFile.response.games[i].appid);
+						highlight("app/" + jsonFile.response.games[i].appid, HIGHLIGHT_OWNED);
 					}
 				}
 			} else {
@@ -289,9 +304,9 @@ function storefrontApiAppsInPack(subID, customFunction = null) {
 					var jsonFile = JSON.parse(response.responseText);
 
 					if (jsonFile.response.game_count === arrayApps.length) {
-						highlight("sub/" + subID);
+						highlight('sub/' + subID, HIGHLIGHT_OWNED);
 					} else if (jsonFile.response.game_count !== 0) {
-						highlightSub("sub/" + subID);
+						highlight('sub/' + subID, HIGHLIGHT_PARTIALLY_OWNED);
 					}
 				});
 
@@ -425,6 +440,7 @@ function injectInterface() {
 	injectRow();
 }
 
+
 function injectFunctions() {
 	var scriptCode = [
 		"function retrieveChecked() {",
@@ -474,6 +490,7 @@ function injectFunctions() {
 	node.appendChild(document.createTextNode(scriptCode));
 	document.head.appendChild(node);
 }
+
 
 function injectRow() {
 	var discDropdown = document.querySelector("a[class~='nav__button'][href='/discussions']");
@@ -528,6 +545,7 @@ function injectRow() {
 		dlg.style.top = '150px';
 	});
 }
+
 
 function injectDialog() {
 	var background = document.createElement('div');
@@ -863,6 +881,7 @@ function injectDialog() {
 	});
 }
 
+
 function injectDlgStyle() {
 	var dialogCSS = [
 			"#black-background {",
@@ -952,106 +971,126 @@ function injectDlgStyle() {
 }
 
 
-
-// ========== HIGHLIGHT FUNCTIONS ==========
-function highlight(row) {
-	var rows = document.getElementsByClassName(row);
+function injectHighlightStyle() {
 	var data = {};
+
+	// Get stored values of highlight colours and/or default theme values
 	data.OwnedColor = localStorage.getItem('RCE-OwnedColor');
-	data.MBlueTheme = localStorage.getItem('MBlueTheme');
-	data.MDarkTheme = localStorage.getItem('MDarkTheme');
-	data.SPDarkTheme = localStorage.getItem('SPDarkTheme');
-
-	for (var i = 0; i < rows.length; i++) {
-		rows[i].style.textShadow = "none";
-		if (data.OwnedColor !== null) {
-			rows[i].style.backgroundColor = data.OwnedColor;
-		} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-			rows[i].style.backgroundColor = "#0E4E0E";
-		} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-			rows[i].style.backgroundColor = "#0E4E0E";
-		} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-			rows[i].style.backgroundColor = "#0E4E0E";
-		} else {
-			rows[i].style.backgroundColor = "#C2FFAD";
-		}
-	}
-}
-
-
-function highlightSub(row) {
-	var rows = document.getElementsByClassName(row);
-	var data = {};
 	data.PartiallyOwnedColor = localStorage.getItem('RCE-PartiallyOwnedColor');
-	data.MBlueTheme = localStorage.getItem('MBlueTheme');
-	data.MDarkTheme = localStorage.getItem('MDarkTheme');
-	data.SPDarkTheme = localStorage.getItem('SPDarkTheme');
-
-	for (var i = 0; i < rows.length; i++) {
-		rows[i].style.textShadow = "none";
-		if (data.PartiallyOwnedColor !== null) {
-			rows[i].style.backgroundColor = data.PartiallyOwnedColor;
-		} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-			rows[i].style.backgroundColor = "rgba(150, 90, 16, 0.7)";
-		} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-			rows[i].style.backgroundColor = "rgba(150, 90, 16, 0.7)";
-		} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-			rows[i].style.backgroundColor = "rgba(255, 112, 67, 0.60)";
-		} else {
-			rows[i].style.backgroundColor = "#FFD68F";
-		}
-	}
-}
-
-
-function highlightWishlist(row) {
-	var rows = document.getElementsByClassName(row);
-	var data = {};
 	data.WishlistColor = localStorage.getItem('RCE-WishlistColor');
-	data.MBlueTheme = localStorage.getItem('MBlueTheme');
-	data.MDarkTheme = localStorage.getItem('MDarkTheme');
-	data.SPDarkTheme = localStorage.getItem('SPDarkTheme');
-
-	for (var i = 0; i < rows.length; i++) {
-		rows[i].style.textShadow = "none";
-		if (data.WishlistColor !== null) {
-			rows[i].style.backgroundColor = data.WishlistColor;
-		} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-			rows[i].style.backgroundColor = "rgba(120, 154, 201, 0.70)";
-		} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-			rows[i].style.backgroundColor = "rgba(120, 154, 201, 0.70)";
-		} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-			rows[i].style.backgroundColor = "#408884";
-		} else {
-			rows[i].style.backgroundColor = "#5DFBF3";
-		}
-	}
-}
-
-
-function highlightIgnored(row) {
-	var rows = document.getElementsByClassName(row);
-	var data = {};
 	data.IgnoredColor = localStorage.getItem('RCE-IgnoredColor');
 	data.MBlueTheme = localStorage.getItem('MBlueTheme');
 	data.MDarkTheme = localStorage.getItem('MDarkTheme');
 	data.SPDarkTheme = localStorage.getItem('SPDarkTheme');
 
+	var dialogCSS = [
+		".RCE-owned, .RCE-partially-owned, .RCE-wishlist, .RCE-ignored {",
+		"  text-shadow: none;",
+		"}"
+	];
+
+	// Figure out and add owned color
+	dialogCSS.push(".RCE-owned {");
+
+	if (data.OwnedColor !== null) {
+		dialogCSS.push("  background-color: " + data.OwnedColor + " !important;");
+	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
+		dialogCSS.push("  background-color: #0E4E0E !important;");
+	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
+		dialogCSS.push("  background-color: #0E4E0E !important;");
+	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
+		dialogCSS.push("  background-color: #0E4E0E !important;");
+	} else {
+		dialogCSS.push("  background-color: #C2FFAD !important;");
+	}
+
+	dialogCSS.push("}");
+
+	// Figure out and add partially owned color
+	dialogCSS.push(".RCE-partially-owned {");
+
+	if (data.PartiallyOwnedColor !== null) {
+		dialogCSS.push("  background-color: " + data.PartiallyOwnedColor + " !important;");
+	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
+		dialogCSS.push("  background-color: rgba(150, 90, 16, 0.7) !important;");
+	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
+		dialogCSS.push("  background-color: rgba(150, 90, 16, 0.7) !important;");
+	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
+		dialogCSS.push("  background-color: rgba(255, 112, 67, 0.60) !important;");
+	} else {
+		dialogCSS.push("  background-color: #FFD68F;");
+	}
+
+	dialogCSS.push("}");
+
+	// Figure out and add wishlist color
+	dialogCSS.push(".RCE-wishlist {");
+
+	if (data.WishlistColor !== null) {
+		dialogCSS.push("  background-color: " + data.WishlistColor + " !important;");
+	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
+		dialogCSS.push("  background-color: rgba(120, 154, 201, 0.70) !important;");
+	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
+		dialogCSS.push("  background-color: rgba(120, 154, 201, 0.70) !important;");
+	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
+		dialogCSS.push("  background-color: #408884 !important;");
+	} else {
+		dialogCSS.push("  background-color: #5DFBF3 !important;");
+	}
+
+	dialogCSS.push("}")
+
+	// Figure out and add ignored color
+	dialogCSS.push(".RCE-ignored {");
+
+	if (data.IgnoredColor !== null) {
+		dialogCSS.push("  background-color: " + data.IgnoredColor + " !important;");
+	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
+		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
+		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
+		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+	} else {
+		dialogCSS.push("  background-color: #9E9E9E !important;");
+	}
+
+	dialogCSS.push("}");
+
+	dialogCSS = dialogCSS.join("\n");
+
+	var node = document.createElement('style');
+	node.type = 'text/css';
+	node.appendChild(document.createTextNode(dialogCSS));
+	document.getElementsByTagName('head')[0].appendChild(node);
+}
+
+
+
+// ========== HIGHLIGHT FUNCTIONS ==========
+function highlight(id, type) {
+	// Arguments for type:
+	//   0 - Owned
+	//   1 - Partially owned
+	//   2 - Wishlist
+	//   3 - Ignored
+	// id will be a string such as app/1234
+
+	var rows = document.getElementsByClassName(id);
+
 	for (var i = 0; i < rows.length; i++) {
-		rows[i].style.textShadow = "none";
-		if (data.IgnoredColor !== null) {
-			rows[i].style.backgroundColor = data.IgnoredColor;
-		} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-			rows[i].style.backgroundColor = "rgba(93, 86, 84, 0.9)";
-		} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-			rows[i].style.backgroundColor = "rgba(93, 86, 84, 0.9)";
-		} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-			rows[i].style.backgroundColor = "rgba(93, 86, 84, 0.9)";
-		} else {
-			rows[i].style.backgroundColor = "#9E9E9E";
+		if (type === 0) {
+			rows[i].className += " RCE-owned";
+		} else if (type === 1) {
+			rows[i].className += " RCE-partially-owned";
+		} else if (type === 2) {
+			rows[i].className += " RCE-wishlist";
+		} else if (type === 3) {
+			rows[i].className += " RCE-ignored";
 		}
 	}
 }
+
 
 
 // ========== SCAN FUNCTIONS ==========
