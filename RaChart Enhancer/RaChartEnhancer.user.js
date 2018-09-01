@@ -109,7 +109,11 @@ function storeMethodRequest(appIDs, subIDs) {
 						});
 
 						if (notWishlistApps.length > 0) {
-							orderedMatchingAlgorithm(notWishlistApps, jsonFile.rgIgnoredApps, function(appID) {
+							// Due to a recent change, Steam now sends rgIgnoredApps
+							// as an array of objects such as {284750: 0}
+							var ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
+
+							orderedMatchingAlgorithm(notWishlistApps, ignoredApps, function(appID) {
 								highlightIgnored("app/" + appID);
 							});
 						}
