@@ -128,20 +128,32 @@ function storeMethodRequest(appIDs, subIDs) {
 								var jsonPackFile = JSON.parse(response.responseText);
 								var arrayApps = [];
 
-								for (var i = 0; i < jsonPackFile[subID].data.apps.length; i++) {
-									arrayApps.push(jsonPackFile[subID].data.apps[i].id);
-								}
 
-								var notMatchedApps = orderedMatchingAlgorithm(arrayApps, jsonFile.rgOwnedApps);
+								if (jsonPackFile[subID].success === false) {
+									console.warn('Invalid subID entry ' + subID);
 
-								if (notMatchedApps.length === 0) {
-									highlight("sub/" + subID);
-								} else if (notMatchedApps.length !== arrayApps.length) {
-									highlightSub("sub/" + subID);
-								} else {
-									orderedMatchingAlgorithm([subID], jsonFile.rgIgnoredPackages, function(subID) {
-										highlightIgnored("sub/" + subID);
+									var invalids = document.querySelectorAll("a[href*='sub/" + subID + "']");
+
+									invalids.forEach(function(element) {
+										element.style.backgroundColor = "red";
+										element.title += " Invalid link";
 									});
+								} else {
+									for (var i = 0; i < jsonPackFile[subID].data.apps.length; i++) {
+										arrayApps.push(jsonPackFile[subID].data.apps[i].id);
+									}
+
+									var notMatchedApps = orderedMatchingAlgorithm(arrayApps, jsonFile.rgOwnedApps);
+
+									if (notMatchedApps.length === 0) {
+										highlight("sub/" + subID);
+									} else if (notMatchedApps.length !== arrayApps.length) {
+										highlightSub("sub/" + subID);
+									} else {
+										orderedMatchingAlgorithm([subID], jsonFile.rgIgnoredPackages, function(subID) {
+											highlightIgnored("sub/" + subID);
+										});
+									}
 								}
 							});
 						}
