@@ -2,7 +2,7 @@
 // @name		 RaChart™ Enhancer
 // @author       Sighery
 // @description  Enhances Rachel's charts in SG by highlighting you the games you own already
-// @version	     0.30.3
+// @version	     0.30.4
 // @icon		 http://www.sighery.com/favicon.ico
 // @downloadURL  https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.user.js
 // @updateURL	 https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.meta.js
