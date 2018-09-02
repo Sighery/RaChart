@@ -52,7 +52,7 @@ const IGNORED_SPDARK = "rgba(93, 86, 84, 0.9)";
 refractorStorage();
 injectInterface();
 
-if ((window.location.href.match(".steamgifts.com/discussion/") || window.location.href.match(".steamgifts.com/giveaway/")) !== null && confirmAuthor()) {
+if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts\.com\/giveaway\/)")) !== null && confirmAuthor()) {
 	var apiKey = localStorage.getItem('APIKey');
 	var steamID64 = localStorage.getItem('SteamID64');
 	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');
@@ -436,7 +436,7 @@ function confirmRow(row) {
 		return false;
 	} if (row.getElementsByTagName("A").length < 1) {
 		return false;
-	} if (/store\.steampowered\.com/.test(row.getElementsByTagName("A")[0].href) === false) {
+	} if (/(store\.steampowered\.com)|(steamdb\.info)/.test(row.getElementsByTagName("A")[0].href) === false) {
 		return false;
 	}
 
