@@ -465,30 +465,50 @@ function injectInterface() {
 function injectFunctions() {
 	var scriptCode = [
 		"function retrieveChecked() {",
+		"	var ownedColorBox = document.getElementById('RCE-OwnedColor');",
+		"	var partiallyOwnedColorBox = document.getElementById('RCE-PartiallyOwnedColor');",
+		"	var wishlistColorBox = document.getElementById('RCE-WishlistColor');",
+		"	var ignoredColorBox = document.getElementById('RCE-IgnoredColor');",
+		"	ownedColorBox.value = \"{0}\";".format(OWNED_DEFAULT),
+		"	partiallyOwnedColorBox.value = \"{0}\";".format(PARTIALLY_OWNED_DEFAULT),
+		"	wishlistColorBox.value = \"{0}\";".format(WISHLIST_DEFAULT),
+		"	ignoredColorBox.value = \"{0}\";".format(IGNORED_DEFAULT),
 		"	if (localStorage.getItem('MBlueTheme') == 'true') {",
 		"		document.getElementById('MBlueTheme').checked = true;",
+		"		ownedColorBox.value = \"{0}\";".format(OWNED_MBLUE),
+		"		partiallyOwnedColorBox.value = \"{0}\";".format(PARTIALLY_OWNED_MBLUE),
+		"		wishlistColorBox.value = \"{0}\";".format(WISHLIST_MBLUE),
+		"		ignoredColorBox.value = \"{0}\";".format(IGNORED_MBLUE),
 		"	}",
 		"	if (localStorage.getItem('MDarkTheme') == 'true') {",
 		"		document.getElementById('MDarkTheme').checked = true;",
+		"		ownedColorBox.value = \"{0}\";".format(OWNED_MDARK),
+		"		partiallyOwnedColorBox.value = \"{0}\";".format(PARTIALLY_OWNED_MDARK),
+		"		wishlistColorBox.value = \"{0}\";".format(WISHLIST_MDARK),
+		"		ignoredColorBox.value = \"{0}\";".format(IGNORED_MDARK),
 		"	}",
 		"	if (localStorage.getItem('SPDarkTheme') == 'true') {",
 		"		document.getElementById('SPDarkTheme').checked = true;",
+		"		ownedColorBox.value = \"{0}\";".format(OWNED_SPDARK),
+		"		partiallyOwnedColorBox.value = \"{0}\";".format(PARTIALLY_OWNED_SPDARK),
+		"		wishlistColorBox.value = \"{0}\";".format(WISHLIST_SPDARK),
+		"		ignoredColorBox.value = \"{0}\";".format(IGNORED_SPDARK),
 		"	}",
 		"	var ownedColor = localStorage.getItem('RCE-OwnedColor');",
 		"	var partiallyOwnedColor = localStorage.getItem('RCE-PartiallyOwnedColor');",
 		"	var wishlistColor = localStorage.getItem('RCE-WishlistColor');",
 		"	var ignoredColor = localStorage.getItem('RCE-IgnoredColor');",
 		"	if (ownedColor !== null) {",
-		"		document.getElementById('RCE-OwnedColor').value = ownedColor;",
+		"		ownedColorBox.value = ownedColor;",
 		"	}",
 		"	if (partiallyOwnedColor !== null) {",
-		"		document.getElementById('RCE-PartiallyOwnedColor').value = partiallyOwnedColor;",
+		"		partiallyOwnedColorBox.value = partiallyOwnedColor;",
 		"	}",
 		"	if (wishlistColor !== null) {",
-		"		document.getElementById('RCE-WishlistColor').value = wishlistColor;",
+		"		wishlistColorBox.value = wishlistColor;",
 		"	}",
 		"	if (ignoredColor !== null) {",
-		"		document.getElementById('RCE-IgnoredColor').value = ignoredColor;",
+		"		ignoredColorBox.value = ignoredColor;",
 		"	}",
 		"	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');",
 		"	if (bStoreMethod !== null) {",
@@ -879,6 +899,12 @@ function injectDialog() {
 		} else {
 			localStorage.setItem(input.id, true);
 		}
+
+		// Remove all other themes' checkboxes
+		dlgBody.children[30].checked = false;
+		localStorage.removeItem(dlgBody.children[30].id);
+		dlgBody.children[33].checked = false;
+		localStorage.removeItem(dlgBody.children[33].id);
 	});
 
 	dlgBody.children[30].addEventListener('click', function() {
@@ -889,6 +915,12 @@ function injectDialog() {
 		} else {
 			localStorage.setItem(input.id, true);
 		}
+
+		// Remove all other themes' checkboxes
+		dlgBody.children[27].checked = false;
+		localStorage.removeItem(dlgBody.children[27].id);
+		dlgBody.children[33].checked = false;
+		localStorage.removeItem(dlgBody.children[33].id);
 	});
 
 	dlgBody.children[33].addEventListener('click', function() {
@@ -899,6 +931,12 @@ function injectDialog() {
 		} else {
 			localStorage.setItem(input.id, true);
 		}
+
+		// Remove all other themes' checkboxes
+		dlgBody.children[27].checked = false;
+		localStorage.removeItem(dlgBody.children[27].id);
+		dlgBody.children[30].checked = false;
+		localStorage.removeItem(dlgBody.children[30].id);
 	});
 
 	dragElement(dlg);
@@ -958,10 +996,10 @@ function injectDlgStyle() {
 			"  background-color: #fff;",
 			"  border: 2px solid #333;",
 			"  box-shadow: 1px 1px 0 #333,",
-			"			  2px 2px 0 #333,",
-			"			  3px 3px 0 #333,",
-			"			  4px 4px 0 #333,",
-			"			  5px 5px 0 #333;",
+			"			   2px 2px 0 #333,",
+			"			   3px 3px 0 #333,",
+			"			   4px 4px 0 #333,",
+			"			   5px 5px 0 #333;",
 			"  color: #333;",
 			"  display: inline-block;",
 			"  padding: 4px 6px;",
