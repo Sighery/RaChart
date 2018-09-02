@@ -1,30 +1,49 @@
 // ==UserScript==
-// @name		 RaChart™ Enhancer
-// @author       Sighery
-// @description  Enhances Rachel's charts in SG by highlighting you the games you own already
-// @version	     0.30.4
-// @downloadURL  https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.user.js
-// @updateURL	 https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.meta.js
-// @supportURL   https://www.steamgifts.com/discussion/riOvr/
-// @namespace	 Sighery
-// @match		 https://www.steamgifts.com/*
-// @grant		 GM_xmlhttpRequest
-// @grant        GM_notification
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
-// @connect	     api.steampowered.com
-// @connect	     store.steampowered.com
-// @require      http://www.kryogenix.org/code/browser/sorttable/sorttable.js
+// @name		RaChart™ Enhancer
+// @author		Sighery
+// @description	Enhances Rachel's charts in SG by highlighting you the games you own already
+// @version		0.30.4
+// @downloadURL	https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.user.js
+// @updateURL	https://github.com/Sighery/RaChart/raw/master/RaChart%20Enhancer/RaChartEnhancer.meta.js
+// @supportURL	https://www.steamgifts.com/discussion/riOvr/
+// @namespace	Sighery
+// @match		https://www.steamgifts.com/*
+// @grant		GM_xmlhttpRequest
+// @grant		GM_notification
+// @grant		GM_setValue
+// @grant		GM_getValue
+// @grant		GM_deleteValue
+// @connect		api.steampowered.com
+// @connect		store.steampowered.com
+// @requires	https://gist.githubusercontent.com/Sighery/feddf87a45215ead08ae8c3321a2083d/raw/52294fe11c35bfb20dcfee06a9972e001cbdad31/python-string-format.js
+// @require		https://www.kryogenix.org/code/browser/sorttable/sorttable.js
 // ==/UserScript==
+
 
 // ==================== CONSTANTS ====================
 // For easier remembering
-// highlight function types
+// Types for highlight function
 const HIGHLIGHT_OWNED = 0;
 const HIGHLIGHT_PARTIALLY_OWNED = 1;
 const HIGHLIGHT_WISHLIST = 2;
 const HIGHLIGHT_IGNORED = 3;
+// Default colors for highlighting rows
+const OWNED_DEFAULT = "#C2FFAD";
+const OWNED_MBLUE = "#0E4E0E";
+const OWNED_MDARK = "#0E4E0E";
+const OWNED_SPDARK = "#0E4E0E";
+const PARTIALLY_OWNED_DEFAULT = "#FFD68F";
+const PARTIALLY_OWNED_MBLUE = "rgba(150, 90, 16, 0.7)";
+const PARTIALLY_OWNED_MDARK = "rgba(150, 90, 16, 0.7)";
+const PARTIALLY_OWNED_SPDARK = "rgba(255, 112, 67, 0.60)";
+const WISHLIST_DEFAULT = "#5DFBF3";
+const WISHLIST_MBLUE = "rgba(120, 154, 201, 0.70)";
+const WISHLIST_MDARK = "rgba(120, 154, 201, 0.70)";
+const WISHLIST_SPDARK = "#408884";
+const IGNORED_DEFAULT = "#9E9E9E";
+const IGNORED_MBLUE = "rgba(93, 86, 84, 0.9)";
+const IGNORED_MDARK = "rgba(93, 86, 84, 0.9)";
+const IGNORED_SPDARK = "rgba(93, 86, 84, 0.9)";
 
 
 
@@ -111,12 +130,12 @@ function storeMethodRequest(appIDs, subIDs) {
 			} else {
 				if (appIDs.length > 0) {
 					var notOwnedApps = orderedMatchingAlgorithm(appIDs, jsonFile.rgOwnedApps, function(appID) {
-						highlight('app/' + appID, HIGHLIGHT_OWNED);
+						highlight('app/{0}'.format(appID), HIGHLIGHT_OWNED);
 					});
 
 					if (notOwnedApps.length > 0) {
 						var notWishlistApps = orderedMatchingAlgorithm(notOwnedApps, jsonFile.rgWishlist, function(appID) {
-							highlight('app/' + appID, HIGHLIGHT_WISHLIST);
+							highlight('app/{0}'.format(appID), HIGHLIGHT_WISHLIST);
 						});
 
 						if (notWishlistApps.length > 0) {
@@ -125,7 +144,7 @@ function storeMethodRequest(appIDs, subIDs) {
 							var ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
 
 							orderedMatchingAlgorithm(notWishlistApps, ignoredApps, function(appID) {
-								highlight('app/' + appID, HIGHLIGHT_IGNORED);
+								highlight('app/{0}'.format(appID), HIGHLIGHT_IGNORED);
 							});
 						}
 					}
@@ -133,7 +152,7 @@ function storeMethodRequest(appIDs, subIDs) {
 
 				if (subIDs.length > 0) {
 					var notOwnedPacks = orderedMatchingAlgorithm(subIDs, jsonFile.rgOwnedPackages, function(subID) {
-						highlight('sub/' + subID, HIGHLIGHT_OWNED);
+						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
 					});
 
 					if (notOwnedPacks.length > 0) {
@@ -145,9 +164,9 @@ function storeMethodRequest(appIDs, subIDs) {
 
 
 								if (jsonPackFile[subID].success === false) {
-									console.warn('Invalid subID entry ' + subID);
+									console.warn('Invalid subID entry {0}'.format(subID));
 
-									var invalids = document.querySelectorAll("a[href*='sub/" + subID + "']");
+									var invalids = document.querySelectorAll("a[href*='sub/{0}']".format(subID));
 
 									invalids.forEach(function(element) {
 										element.style.backgroundColor = "red";
@@ -164,12 +183,12 @@ function storeMethodRequest(appIDs, subIDs) {
 									var notMatchedApps = orderedMatchingAlgorithm(arrayApps, jsonFile.rgOwnedApps);
 
 									if (notMatchedApps.length === 0) {
-										highlight('sub/' + subID, HIGHLIGHT_OWNED);
+										highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
 									} else if (notMatchedApps.length !== arrayApps.length) {
-										highlight('sub/' + subID, HIGHLIGHT_PARTIALLY_OWNED);
+										highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
 									} else {
 										orderedMatchingAlgorithm([subID], jsonFile.rgIgnoredPackages, function(subID) {
-											highlight('sub/' + subID, HIGHLIGHT_IGNORED);
+											highlight('sub/{0}'.format(subID), HIGHLIGHT_IGNORED);
 										});
 									}
 								}
@@ -243,7 +262,8 @@ function storeMethodRequest(appIDs, subIDs) {
 
 function webApiOwnedRequest(appidsFilter, customFunction = null) {
 	appidsFilter = turnToIntArray(appidsFilter);
-	var link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=" + apiKey + "&input_json={\"steamid\":" + steamID64 + ",\"appids_filter\":" + JSON.stringify(appidsFilter) + "}";
+	// var link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=" + apiKey + "&input_json={\"steamid\":" + steamID64 + ",\"appids_filter\":" + JSON.stringify(appidsFilter) + "}";
+	var link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={0}&input_json={\"steamid\":{1},\"appids_filter\":{2}}".format(apiKey, steamID64, JSON.stringify(appidsFilter));
 
 	GM_xmlhttpRequest({
 		method: "GET",
@@ -255,7 +275,7 @@ function webApiOwnedRequest(appidsFilter, customFunction = null) {
 
 				if (jsonFile.response.game_count > 0) {
 					for (var i = 0; i < jsonFile.response.games.length; i++) {
-						highlight("app/" + jsonFile.response.games[i].appid, HIGHLIGHT_OWNED);
+						highlight("app/{0}".format(jsonFile.response.games[i].appid), HIGHLIGHT_OWNED);
 					}
 				}
 			} else {
@@ -304,9 +324,9 @@ function storefrontApiAppsInPack(subID, customFunction = null) {
 					var jsonFile = JSON.parse(response.responseText);
 
 					if (jsonFile.response.game_count === arrayApps.length) {
-						highlight('sub/' + subID, HIGHLIGHT_OWNED);
+						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
 					} else if (jsonFile.response.game_count !== 0) {
-						highlight('sub/' + subID, HIGHLIGHT_PARTIALLY_OWNED);
+						highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
 					}
 				});
 
@@ -993,15 +1013,15 @@ function injectHighlightStyle() {
 	dialogCSS.push(".RCE-owned {");
 
 	if (data.OwnedColor !== null) {
-		dialogCSS.push("  background-color: " + data.OwnedColor + " !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(data.OwnedColor));
 	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-		dialogCSS.push("  background-color: #0E4E0E !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(OWNED_MBLUE));
 	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-		dialogCSS.push("  background-color: #0E4E0E !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(OWNED_MDARK));
 	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-		dialogCSS.push("  background-color: #0E4E0E !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(OWNED_SPDARK));
 	} else {
-		dialogCSS.push("  background-color: #C2FFAD !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(OWNED_DEFAULT));
 	}
 
 	dialogCSS.push("}");
@@ -1010,15 +1030,15 @@ function injectHighlightStyle() {
 	dialogCSS.push(".RCE-partially-owned {");
 
 	if (data.PartiallyOwnedColor !== null) {
-		dialogCSS.push("  background-color: " + data.PartiallyOwnedColor + " !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(data.PartiallyOwnedColor));
 	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-		dialogCSS.push("  background-color: rgba(150, 90, 16, 0.7) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(PARTIALLY_OWNED_MBLUE));
 	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-		dialogCSS.push("  background-color: rgba(150, 90, 16, 0.7) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(PARTIALLY_OWNED_MDARK));
 	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-		dialogCSS.push("  background-color: rgba(255, 112, 67, 0.60) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(PARTIALLY_OWNED_SPDARK));
 	} else {
-		dialogCSS.push("  background-color: #FFD68F;");
+		dialogCSS.push("  background-color: {0} !important;".format(PARTIALLY_OWNED_DEFAULT));
 	}
 
 	dialogCSS.push("}");
@@ -1027,15 +1047,15 @@ function injectHighlightStyle() {
 	dialogCSS.push(".RCE-wishlist {");
 
 	if (data.WishlistColor !== null) {
-		dialogCSS.push("  background-color: " + data.WishlistColor + " !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(data.WishlistColor));
 	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-		dialogCSS.push("  background-color: rgba(120, 154, 201, 0.70) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(WISHLIST_MBLUE));
 	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-		dialogCSS.push("  background-color: rgba(120, 154, 201, 0.70) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(WISHLIST_MDARK));
 	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-		dialogCSS.push("  background-color: #408884 !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(WISHLIST_SPDARK));
 	} else {
-		dialogCSS.push("  background-color: #5DFBF3 !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(WISHLIST_DEFAULT));
 	}
 
 	dialogCSS.push("}")
@@ -1044,15 +1064,15 @@ function injectHighlightStyle() {
 	dialogCSS.push(".RCE-ignored {");
 
 	if (data.IgnoredColor !== null) {
-		dialogCSS.push("  background-color: " + data.IgnoredColor + " !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(data.IgnoredColor));
 	} else if (data.MBlueTheme !== null && data.MBlueTheme !== undefined && data.MBlueTheme != false) {
-		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(IGNORED_MBLUE));
 	} else if (data.MDarkTheme !== null && data.MDarkTheme !== undefined && data.MDarkTheme != false) {
-		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(IGNORED_MDARK));
 	} else if (data.SPDarkTheme !== null && data.SPDarkTheme !== undefined && data.SPDarkTheme != false) {
-		dialogCSS.push("  background-color: rgba(93, 86, 84, 0.9) !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(IGNORED_SPDARK));
 	} else {
-		dialogCSS.push("  background-color: #9E9E9E !important;");
+		dialogCSS.push("  background-color: {0} !important;".format(IGNORED_DEFAULT));
 	}
 
 	dialogCSS.push("}");
@@ -1115,11 +1135,11 @@ function scanTable() {
 		if (/app/.test(link)) {
 			id = /\d+/.exec(link)[0];
 			appIDs.add(id);
-			elements[i].parentNode.setAttribute('class', "app/" + id);
+			elements[i].parentNode.setAttribute('class', "app/{0}".format(id));
 		} else if (/sub/.test(link)) {
 			id = /\d+/.exec(link)[0];
 			subIDs.add(id);
-			elements[i].parentNode.setAttribute('class', "sub/" + id);
+			elements[i].parentNode.setAttribute('class', "sub/{0}".format(id));
 		}
 	}
 
