@@ -15,8 +15,9 @@
 // @grant		GM_deleteValue
 // @connect		api.steampowered.com
 // @connect		store.steampowered.com
-// @requires	https://gist.githubusercontent.com/Sighery/feddf87a45215ead08ae8c3321a2083d/raw/52294fe11c35bfb20dcfee06a9972e001cbdad31/python-string-format.js
 // @require		https://www.kryogenix.org/code/browser/sorttable/sorttable.js
+// @require		https://gist.githubusercontent.com/Sighery/feddf87a45215ead08ae8c3321a2083d/raw/52294fe11c35bfb20dcfee06a9972e001cbdad31/python-string-format.js
+// @require		https://gist.githubusercontent.com/Sighery/d1ea3de4da5ff7e8b36c6ec0ea74a1c2/raw/080107877f9b2ddaebaacc629ce6ee7d6bedb1de/draggable-absolute-dialog.js
 // ==/UserScript==
 
 
@@ -899,6 +900,8 @@ function injectDialog() {
 			localStorage.setItem(input.id, true);
 		}
 	});
+
+	dragElement(dlg);
 }
 
 
@@ -929,6 +932,7 @@ function injectDlgStyle() {
 			"  margin: 10px 10px 10px 10px;",
 			"  color: white;",
 			"  font-size: 20px;",
+			"  cursor: move;",
 			"}",
 			"#dlg-header-title {",
 			"  float: left;",
