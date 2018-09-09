@@ -57,27 +57,42 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 	var steamID64 = localStorage.getItem('SteamID64');
 	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');
 
-	var apps = scanTable();
-	var appIDs = apps[0];
-	var subIDs = apps[1];
+	var links = scanTable();
 
 	// Add the CSS for being able to highlight rows
 	injectHighlightStyle();
 
-	if ((appIDs.length || subIDs.length) > 0) {
-		if (bStoreMethod !== null && bStoreMethod !== undefined) {
-			storeMethodRequest(appIDs, subIDs);
-		} else if (checkIDAPI()) {
-			if (appIDs.length > 0) {
-				webApiOwnedRequest(appIDs);
-			}
+	if ((links.apps.length || links.apps.length || links.bundles.length) > 0) {
+		(async() => {
+			let storeFallback = true;
 
-			if (subIDs.length > 0) {
-				for (var i = 0; i < subIDs.length; i++) {
-					storefrontApiAppsInPack(subIDs[i]);
+			if (bStoreMethod !== null && bStoreMethod !== undefined) {
+				try {
+					await storeMethodRequest(links);
+					storeFallback = false;
+				} catch (err) {
+					console.error(err);
 				}
 			}
-		}
+
+			if (storeFallback === true && checkIDAPI()) {
+				// First gather the apps in all the packages and add them
+				if (links.subs.length > 0 || links.bundles.length > 0) {
+					await Promise.all(links.subs.map(
+						sub => storefrontApiAppsInPack(sub.id)
+							.then(subData => {
+								let subID = parseInt(Object.keys(subData)[0]);
+								links.subs[links.subs_index[subID]].apps = subData[subID];
+							})
+							.catch(err => err)
+					));
+				}
+
+				if (links.apps.length > 0) {
+					await webApiOwnedRequest(links);
+				}
+			}
+		})();
 	}
 }
 
@@ -85,205 +100,168 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 
 // ==================== FUNCTIONALITY ====================
 // ========== REQUESTS FUNCTIONS ==========
-function storeMethodRequest(appIDs, subIDs) {
-	appIDs = turnToIntArray(appIDs);
-	subIDs = turnToIntArray(subIDs);
+async function storeMethodRequest(links) {
+	try {
+		let response = await GM_xmlhttpRequestPromise({
+			method: "GET",
+			url: "https://store.steampowered.com/dynamicstore/userdata/",
+			timeout: 5000,
+			headers: {
+				"Cache-Control": "no-cache, no-store, must-revalidate"
+			}
+		});
 
-	GM_xmlhttpRequest({
-		method: "GET",
-		url: "https://store.steampowered.com/dynamicstore/userdata/",
-		timeout: 5000,
-		headers: {
-			"Cache-Control": "no-cache, no-store, must-revalidate"
-		},
-		onload: function(response) {
-			var jsonFile = JSON.parse(response.responseText);
-			var i;
+		let jsonFile = JSON.parse(response.responseText);
 
-			if (checkLoginStoreMethod(jsonFile) === false) {
-				if (checkIDAPI() === false) {
-					GM_notification({
-						title: "RaChart™ Enhancer",
-						text: "Error: Not logged into the Steam store and not enough info to use the API.",
-						image: "http://i.imgur.com/f2OtaSe.png",
-						highlight: false,
-						timeout: 3
-					});
-				} else {
-					GM_notification({
-						title: "RaChart™ Enhancer",
-						text: "Error: Not logged into the Steam store.",
-						image: "http://i.imgur.com/f2OtaSe.png",
-						highlight: false,
-						timeout: 1.5
-					});
+		if (checkLoginStoreMethod(jsonFile) === false) {
+			GM_notification({
+				title: "RaChart™ Enhancer",
+				text: "Error: Not logged into the Steam store.",
+				image: "http://i.imgur.com/f2OtaSe.png",
+				highlight: false,
+				timeout: 1.5
+			});
 
-					if (appIDs.length > 0) {
-						webApiOwnedRequest(appIDs);
-					}
+			throw new NotLoggedInError();
+		}
 
-					if (subIDs.length > 0) {
-						for (i = 0; i < subIDs.length; i++) {
-							storefrontApiAppsInPack(subIDs[i]);
-						}
-					}
+		if (links.apps.length > 0) {
+			let notOwnedApps = orderedMatchingAlgorithm(
+				links.apps,
+				jsonFile.rgOwnedApps,
+				matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_OWNED)
+			);
+
+			if (notOwnedApps.length > 0) {
+				let notWishlistApps = orderedMatchingAlgorithm(
+					notOwnedApps,
+					jsonFile.rgWishlist,
+					matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_WISHLIST)
+				);
+
+				if (notWishlistApps.length > 0) {
+					// Due to a recent change, Steam now sends rgIgnoredApps
+					// as an array of objects such as {284750: 0}
+					let ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
+
+					orderedMatchingAlgorithm(
+						notWishlistApps,
+						ignoredApps,
+						matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_IGNORED)
+					);
 				}
-			} else {
-				if (appIDs.length > 0) {
-					var notOwnedApps = orderedMatchingAlgorithm(appIDs, jsonFile.rgOwnedApps, function(appID) {
-						highlight('app/{0}'.format(appID), HIGHLIGHT_OWNED);
-					});
+			}
+		}
 
-					if (notOwnedApps.length > 0) {
-						var notWishlistApps = orderedMatchingAlgorithm(notOwnedApps, jsonFile.rgWishlist, function(appID) {
-							highlight('app/{0}'.format(appID), HIGHLIGHT_WISHLIST);
-						});
+		if (links.subs.length > 0) {
+			let notOwnedPacks = orderedMatchingAlgorithm(
+				links.subs.map(sub => sub.id),
+				jsonFile.rgOwnedPackages,
+				matchingSubID => highlight('sub/{0}'.format(matchingSubID), HIGHLIGHT_OWNED)
+			);
 
-						if (notWishlistApps.length > 0) {
-							// Due to a recent change, Steam now sends rgIgnoredApps
-							// as an array of objects such as {284750: 0}
-							var ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
+			if (notOwnedPacks.length > 0) {
+				await Promise.all(notOwnedPacks.map(
+					subID => storefrontApiAppsInPack(subID)
+						.then(subData => {
+							let subID = parseInt(Object.keys(subData)[0]);
+							links.subs[links.subs_index[subID]].apps = subData[subID];
+						})
+						.catch(err => err)
+				));
 
-							orderedMatchingAlgorithm(notWishlistApps, ignoredApps, function(appID) {
-								highlight('app/{0}'.format(appID), HIGHLIGHT_IGNORED);
-							});
-						}
-					}
-				}
+				// Try to match app by app manually now
+				for (let subID of notOwnedPacks) {
+					let sub = links.subs[links.subs_index[subID]];
 
-				if (subIDs.length > 0) {
-					var notOwnedPacks = orderedMatchingAlgorithm(subIDs, jsonFile.rgOwnedPackages, function(subID) {
+					let notMatchedApps = orderedMatchingAlgorithm(sub.apps, jsonFile.rgOwnedApps);
+
+					if (notMatchedApps.length === 0) {
 						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
-					});
-
-					if (notOwnedPacks.length > 0) {
-						for (i = 0; i < notOwnedPacks.length; i++) {
-							storefrontApiAppsInPack(notOwnedPacks[i], function(response) {
-								var subID = response.subID;
-								var jsonPackFile = JSON.parse(response.responseText);
-								var arrayApps = [];
-
-
-								if (jsonPackFile[subID].success === false) {
-									console.warn('Invalid subID entry {0}'.format(subID));
-
-									var invalids = document.querySelectorAll("a[href*='sub/{0}']".format(subID));
-
-									invalids.forEach(function(element) {
-										element.style.backgroundColor = "red";
-										element.title += " Invalid link";
-
-										// Maybe remove id from classList?
-										// element.classList.remove(id);
-									});
-								} else {
-									for (var i = 0; i < jsonPackFile[subID].data.apps.length; i++) {
-										arrayApps.push(jsonPackFile[subID].data.apps[i].id);
-									}
-
-									var notMatchedApps = orderedMatchingAlgorithm(arrayApps, jsonFile.rgOwnedApps);
-
-									if (notMatchedApps.length === 0) {
-										highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
-									} else if (notMatchedApps.length !== arrayApps.length) {
-										highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
-									} else {
-										orderedMatchingAlgorithm([subID], jsonFile.rgIgnoredPackages, function(subID) {
-											highlight('sub/{0}'.format(subID), HIGHLIGHT_IGNORED);
-										});
-									}
-								}
-							});
-						}
-					}
-				}
-			}
-		},
-		ontimeout: function(response) {
-			if (checkIDAPI() === false) {
-					GM_notification({
-						title: "RaChart™ Enhancer",
-						text: "Error: Not logged into the Steam store and not enough info to use the API.",
-						image: "http://i.imgur.com/f2OtaSe.png",
-						highlight: false,
-						timeout: 3
-					});
-			} else {
-				GM_notification({
-					title: "RaChart™ Enhancer",
-					text: "Error: Store request timed out.",
-					image: "http://i.imgur.com/f2OtaSe.png",
-					highlight: false,
-					timeout: 1.5
-				});
-
-				if (appIDs.length > 0) {
-					webApiOwnedRequest(appIDs);
-				}
-
-				if (subIDs.length > 0) {
-					for (i = 0; i < subIDs.length; i++) {
-						storefrontApiAppsInPack(subIDs[i]);
-					}
-				}
-			}
-		},
-		onerror: function(response) {
-			if (checkIDAPI() === false) {
-					GM_notification({
-						title: "RaChart™ Enhancer",
-						text: "Error: Not logged into the Steam store and not enough info to use the API.",
-						image: "http://i.imgur.com/f2OtaSe.png",
-						highlight: false,
-						timeout: 3
-					});
-			} else {
-				GM_notification({
-					title: "RaChart™ Enhancer",
-					text: "Error: Unable to make the request to the store.",
-					image: "http://i.imgur.com/f2OtaSe.png",
-					highlight: false,
-					timeout: 1.5
-				});
-
-				if (appIDs.length > 0) {
-					webApiOwnedRequest(appIDs);
-				}
-
-				if (subIDs.length > 0) {
-					for (i = 0; i < subIDs.length; i++) {
-						storefrontApiAppsInPack(subIDs[i]);
+					} else if (notMatchedApps.length !== sub.apps.length) {
+						highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
+					} else {
+						// Check the ignored packages key. Although so far it's
+						// not even implemented??
+						orderedMatchingAlgorithm(
+							[subID],
+							jsonFile.rgIgnoredPackages,
+							matchedSubID => highlight('sub/{0}'.format(matchedSubID), HIGHLIGHT_IGNORED)
+						);
 					}
 				}
 			}
 		}
-	});
+	} catch (err) {
+		if (err instanceof TimeoutError) {
+			GM_notification({
+				title: "RaChart™ Enhancer",
+				text: "Error: Store request timed out.",
+				image: "http://i.imgur.com/f2OtaSe.png",
+				highlight: false,
+				timeout: 1.5
+			});
+		} else if (err instanceof HttpError || err instanceof NetworkError) {
+			GM_notification({
+				title: "RaChart™ Enhancer",
+				text: "Error: Unable to make the request to the store.",
+				image: "http://i.imgur.com/f2OtaSe.png",
+				highlight: false,
+				timeout: 1.5
+			});
+		}
+
+		// Regardless of type of error, rethrow it so it can be catched and
+		// logged by the main function
+		throw err;
+	}
 }
 
 
-function webApiOwnedRequest(appidsFilter, customFunction = null) {
-	appidsFilter = turnToIntArray(appidsFilter);
-	// var link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=" + apiKey + "&input_json={\"steamid\":" + steamID64 + ",\"appids_filter\":" + JSON.stringify(appidsFilter) + "}";
-	var link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={0}&input_json={\"steamid\":{1},\"appids_filter\":{2}}".format(apiKey, steamID64, JSON.stringify(appidsFilter));
+async function webApiOwnedRequest(links) {
+	let appidsFilter = [];
+	appidsFilter.push.apply(appidsFilter, links.apps);
+	links.subs.forEach(sub => appidsFilter.push.apply(appidsFilter, sub.apps));
+	links.bundles.forEach(bundle => appidsFilter.push.apply(appidsFilter, bundle.apps));
 
-	GM_xmlhttpRequest({
-		method: "GET",
-		url: link,
-		timeout: 5000,
-		onload: function(response) {
-			if (customFunction === null) {
-				var jsonFile = JSON.parse(response.responseText);
+	let link = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={0}&input_json={\"steamid\":{1},\"appids_filter\":{2}}".format(apiKey, steamID64, JSON.stringify(appidsFilter));
 
-				if (jsonFile.response.game_count > 0) {
-					for (var i = 0; i < jsonFile.response.games.length; i++) {
-						highlight("app/{0}".format(jsonFile.response.games[i].appid), HIGHLIGHT_OWNED);
-					}
-				}
-			} else {
-				customFunction(response);
+	try {
+		let response = await GM_xmlhttpRequestPromise({
+			method: "GET",
+			url: link,
+			timeout: 5000
+		});
+
+		let jsonFile = JSON.parse(response.responseText);
+
+		if (jsonFile.response.game_count > 0) {
+			// To avoid pointless lookups of what apps are matched, just try to
+			// highlight every appID given back by the API. If the given appID
+			// was requested from a package, then it will simply not exist a
+			// matching app/ID row in any of the tables and nothing will happen
+			for (let game of jsonFile.response.games) {
+				highlight("app/{0}".format(game.appid), HIGHLIGHT_OWNED);
 			}
-		},
-		ontimeout: function(response) {
+
+			// Sort JSON response of matched appIDs first to avoid sorting repeatedly later
+			let sortedAppIDs = jsonFile.response.games
+				.map(game => game.appid)
+				.sort((a, b) => a - b);
+
+			// Try to match or partially match subs
+			for (let sub of links.subs) {
+				let notMatched = orderedMatchingAlgorithm(sub.apps, sortedAppIDs);
+
+				if (notMatched.length !== sub.apps.length && notMatched.length >= 1) {
+					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_PARTIALLY_OWNED);
+				} else if (notMatched.length === 0) {
+					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_OWNED);
+				}
+			}
+		}
+	} catch (err) {
+		if (err instanceof TimeoutError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
 				text: "Error: Request for fetching owned apps timed out.",
@@ -291,8 +269,7 @@ function webApiOwnedRequest(appidsFilter, customFunction = null) {
 				highlight: false,
 				timeout: 3
 			});
-		},
-		onerror: function(response) {
+		} else if (err instanceof HttpError || err instanceof NetworkError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
 				text: "Error: Could not fetch owned games.",
@@ -300,62 +277,50 @@ function webApiOwnedRequest(appidsFilter, customFunction = null) {
 				highlight: false,
 				timeout: 3
 			});
+		} else {
+			console.error(err);
+			throw err;
 		}
-	});
+	}
 }
 
 
-function storefrontApiAppsInPack(subID, customFunction = null) {
-	GM_xmlhttpRequest({
-		method: "GET",
-		url: "https://store.steampowered.com/api/packagedetails/?packageids=" + subID,
-		timeout: 3000,
-		onload: function(response) {
-			if (customFunction === null) {
-				var jsonFile = JSON.parse(response.responseText);
-				var arrayApps = [];
+async function storefrontApiAppsInPack(subID) {
+	try {
+		let response = await GM_xmlhttpRequestPromise({
+			method: "GET",
+			url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(subID),
+			timeout: 3000
+		});
 
-				for (var i = 0; i < jsonFile[subID].data.apps.length; i++) {
-					arrayApps.push(jsonFile[subID].data.apps[i].id);
-				}
+		let jsonFile = JSON.parse(response.responseText);
+		// Return an object with the subID and corresponding apps
+		return {[subID]: jsonFile[subID].data.apps.map(x => x.id)};
 
-				arrayApps = turnToIntArray(arrayApps);
-
-				webApiOwnedRequest(arrayApps, function(response) {
-					var jsonFile = JSON.parse(response.responseText);
-
-					if (jsonFile.response.game_count === arrayApps.length) {
-						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
-					} else if (jsonFile.response.game_count !== 0) {
-						highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
-					}
-				});
-
-			} else {
-				response.subID = subID;
-				customFunction(response);
-			}
-		},
-		ontimeout: function(response) {
+	} catch (err) {
+		if (err instanceof TimeoutError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Request for fetching apps in package " + subID + " timed out.",
+				text: "Error: Request for fetching apps in package {0} timed out.".format(subID),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
 			});
-		},
-		onerror: function(response) {
+		} else if (err instanceof HttpError || err instanceof NetworkError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Could not fetch apps in package " + subID + ".",
+				text: "Error: Could not fetch apps in package {0}.".format(subID),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
 			});
+		} else {
+			console.error(err);
+			throw err;
 		}
-	});
+	}
 }
+
 
 
 // ========== CHECKING FUNCTIONS ==========
@@ -538,7 +503,7 @@ function injectRow() {
 	var newRow;
 
 	if (discDropdown.previousElementSibling === null) {
-		//Not logged in, create a new button on the header
+		// Not logged in, create a new button on the header
 		newRow = document.createElement("div");
 		newRow.className = "nav__button-container";
 		newRow.appendChild(document.createElement("a"));
@@ -851,25 +816,25 @@ function injectDialog() {
 	});
 
 	dlgBody.children[10].addEventListener('click', function() {
-		//Owned color
+		// Owned color
 		var input = dlgBody.children[9];
 		localStorage.setItem(input.id, input.value);
 	});
 
 	dlgBody.children[14].addEventListener('click', function() {
-		//Partially owned color
+		// Partially owned color
 		var input = dlgBody.children[13];
 		localStorage.setItem(input.id, input.value);
 	});
 
 	dlgBody.children[18].addEventListener('click', function () {
-		//Wishlist color
+		// Wishlist color
 		var input = dlgBody.children[17];
 		localStorage.setItem(input.id, input.value);
 	});
 
 	dlgBody.children[22].addEventListener('click', function() {
-		//Ignored apps color
+		// Ignored apps color
 		var input = dlgBody.children[21];
 		localStorage.setItem(input.id, input.value);
 	});
@@ -882,7 +847,7 @@ function injectDialog() {
 	});
 
 	dlgBody.children[25].children[1].addEventListener('click', function() {
-		//Using store method
+		// Using store method
 		var input = dlgBody.children[25].children[1];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
@@ -892,7 +857,7 @@ function injectDialog() {
 	});
 
 	dlgBody.children[27].addEventListener('click', function() {
-		//Mully's Blue Theme
+		// Mully's Blue Theme
 		var input = dlgBody.children[27];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
@@ -908,7 +873,7 @@ function injectDialog() {
 	});
 
 	dlgBody.children[30].addEventListener('click', function() {
-		//Mully's Dark Theme
+		// Mully's Dark Theme
 		var input = dlgBody.children[30];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
@@ -924,7 +889,7 @@ function injectDialog() {
 	});
 
 	dlgBody.children[33].addEventListener('click', function() {
-		//SquishedPotatoe's Dark Theme
+		// SquishedPotatoe's Dark Theme
 		var input = dlgBody.children[33];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
@@ -1021,7 +986,7 @@ function injectDlgStyle() {
 			"  left: 4px;",
 			"  top: 4px;",
 			"}",
-			//For SquishedPotatoe's Dark Theme
+			// For SquishedPotatoe's Dark Theme
 			".markdown td {",
 			"  background-color: inherit !important;",
 			"}"
@@ -1100,7 +1065,7 @@ function injectHighlightStyle() {
 		dialogCSS.push("  background-color: {0} !important;".format(WISHLIST_DEFAULT));
 	}
 
-	dialogCSS.push("}")
+	dialogCSS.push("}");
 
 	// Figure out and add ignored color
 	dialogCSS.push(".RCE-ignored {");
@@ -1138,17 +1103,17 @@ function highlight(id, type) {
 	//   3 - Ignored
 	// id will be a string such as app/1234
 
-	var rows = document.getElementsByClassName(id);
+	let rows = document.getElementsByClassName(id);
 
-	for (var i = 0; i < rows.length; i++) {
+	for (let row of rows) {
 		if (type === 0) {
-			rows[i].className += " RCE-owned";
+			row.className += " RCE-owned";
 		} else if (type === 1) {
-			rows[i].className += " RCE-partially-owned";
+			row.className += " RCE-partially-owned";
 		} else if (type === 2) {
-			rows[i].className += " RCE-wishlist";
+			row.className += " RCE-wishlist";
 		} else if (type === 3) {
-			rows[i].className += " RCE-ignored";
+			row.className += " RCE-ignored";
 		}
 	}
 }
@@ -1157,56 +1122,80 @@ function highlight(id, type) {
 
 // ========== SCAN FUNCTIONS ==========
 function scanTable() {
-	//Make tables sortable
-	var tables = document.getElementsByTagName('table');
-	for (var j = 0; j < tables.length; j++) {
-		tables[j].className += " sortable";
+	// Make tables sortable
+	let tables = document.getElementsByTagName('table');
+	for (let table of tables) {
+		table.className += " sortable";
 	}
 
-	var elements = document.getElementsByTagName('td');
-	var appIDs = new Set();
-	var subIDs = new Set();
+	let elements = document.getElementsByTagName('td');
+	let appIDs = new Set();
+	let subIDs = new Set();
+	let bundleIDs = new Set();
 
-	for (var i = 0; i < elements.length; i++) {
-		if (confirmRow(elements[i]) === false) {
+	let final = {
+		apps: [],
+		subs: [],
+		subs_index: {},
+		bundles: [],
+		bundles_index: {}
+	}
+
+
+	for (let element of elements) {
+		if (confirmRow(element) === false) {
 			continue;
 		}
 
-		var id;
-		var link = elements[i].getElementsByTagName("A")[0].href;
+		let id;
+		let link = element.getElementsByTagName("A")[0].href;
+
 		if (/app/.test(link)) {
 			id = /\d+/.exec(link)[0];
-			appIDs.add(id);
-			elements[i].parentNode.setAttribute('class', "app/{0}".format(id));
+			appIDs.add(parseInt(id));
+			element.parentNode.setAttribute('class', "app/{0}".format(id));
 		} else if (/sub/.test(link)) {
 			id = /\d+/.exec(link)[0];
-			subIDs.add(id);
-			elements[i].parentNode.setAttribute('class', "sub/{0}".format(id));
+			subIDs.add(parseInt(id));
+			element.parentNode.setAttribute('class', "sub/{0}".format(id));
+		} else if (/bundle/.exec(link)) {
+			id = /\d+/.exec(link)[0];
+			bundleIDs.add(parseInt(id));
+			element.parentNode.setAttribute('class', "bundle/{0}".format(id));
 		}
 	}
 
-	return [Array.from(appIDs), Array.from(subIDs)];
+	final.apps = Array.from(appIDs);
+	subIDs = Array.from(subIDs);
+	for (let i = 0; i < subIDs.length; i++) {
+		final.subs.push({
+			id: subIDs[i],
+			apps: []
+		});
+		final.subs_index[subIDs[i]] = i;
+	}
+	bundleIDs = Array.from(bundleIDs);
+	for (let i = 0; i < bundleIDs.length; i++) {
+		final.bundles.push({
+			id: bundleIDs[i],
+			apps: []
+		});
+		final.bundles_index[bundleIDs[i]] = i;
+	}
+
+	return final;
 }
 
 
 
 // ========== UTILITY FUNCTIONS ==========
 function turnToIntArray(oldArray) {
-	var newArray = [];
-	for (var i = 0; i < oldArray.length; i++) {
-		newArray.push(parseInt(oldArray[i]));
-	}
-
-	return newArray;
+	return oldArray.map((elem) => parseInt(elem));
 }
 
 
 function checkLst(value, list) {
-	if (list.indexOf(value) === -1) {
-		return false;
-	} else {
-		return true;
-	}
+	return list.indexOf(value) === -1 ? false : true;
 }
 
 
@@ -1227,23 +1216,20 @@ function refractorStorage() {
 
 
 function orderedMatchingAlgorithm(array1, array2, customFunction = null) {
-	var notMatched = [];
+	// Will return not matched elements of array1 compared to array2
+	let notMatched = [];
 
-	array1.sort(function(a, b) {
-		return a - b;
-	});
+	array1.sort((a, b) => a - b);
 
-	array2.sort(function(a, b) {
-		return a - b;
-	});
+	array2.sort((a, b) => a - b);
 
-	var i = 0;
-	var j = 0;
+	let i = 0;
+	let j = 0;
 
 	while (true) {
 		if (i >= array1.length || j >= array2.length) {
 			if (i < array1.length) {
-				for (var z = i; z < array1.length; z++) {
+				for (let z = i; z < array1.length; z++) {
 					notMatched.push(array1[z]);
 				}
 			}
@@ -1268,4 +1254,67 @@ function orderedMatchingAlgorithm(array1, array2, customFunction = null) {
 	}
 
 	return notMatched;
+}
+
+
+function GM_xmlhttpRequestPromise(data) {
+	return new Promise((resolve, reject) => {
+		// Match old callback functions to Promise resolve/reject
+		data.onload = (response) => {
+			if (response.status === 200) {
+				resolve(response);
+			} else {
+				response.url = response.finalUrl;
+				reject(new HttpError(response));
+			}
+		}
+		data.ontimeout = (response) => {
+			// Apparently Tampermonkey provides no response element for ontimeout
+			response.url = data.url;
+			reject(new TimeoutError(response));
+		}
+		data.onerror = (response) => {
+			response.url = response.finalUrl;
+			reject(new NetworkError(response));
+		}
+
+		GM_xmlhttpRequest(data);
+	});
+}
+
+
+
+// ========== EXCEPTIONS ==========
+class NetworkError extends Error {
+	constructor(response) {
+		super('Some kind of network error happened requesting ' + response.url);
+		this.name = 'NetworkError';
+		this.response = response;
+	}
+}
+
+
+class HttpError extends Error {
+	constructor(response) {
+		super(response.status + ' for ' + response.url);
+		this.name = 'HttpError';
+		this.response = response;
+	}
+}
+
+
+class TimeoutError extends Error {
+	constructor(response) {
+		super('Timeout for ' + response.url);
+		this.name = 'TimeoutError';
+		this.response = response;
+	}
+}
+
+
+class NotLoggedInError extends Error {
+	constructor() {
+		super('Not logged into the Steam store');
+		this.name = 'NotLoggedInError';
+	}
 }
