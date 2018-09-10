@@ -142,11 +142,9 @@ async function storeMethodRequest(links) {
 				if (notWishlistApps.length > 0) {
 					// Due to a recent change, Steam now sends rgIgnoredApps
 					// as an array of objects such as {284750: 0}
-					let ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
-
 					orderedMatchingAlgorithm(
 						notWishlistApps,
-						ignoredApps,
+						turnToIntArray(Object.keys(jsonFile.rgIgnoredApps)),
 						matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_IGNORED)
 					);
 				}
@@ -183,9 +181,11 @@ async function storeMethodRequest(links) {
 					} else {
 						// Check the ignored packages key. Although so far it's
 						// not even implemented??
+						// Update: No front-end way of doing it but the code is
+						// there. Same structure as recent rgIgnoredApps
 						orderedMatchingAlgorithm(
 							[subID],
-							jsonFile.rgIgnoredPackages,
+							turntoIntArray(Object.keys(jsonFile.rgIgnoredPackages)),
 							matchedSubID => highlight('sub/{0}'.format(matchedSubID), HIGHLIGHT_IGNORED)
 						);
 					}
