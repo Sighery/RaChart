@@ -45,7 +45,10 @@ const IGNORED_DEFAULT = "#9E9E9E";
 const IGNORED_MBLUE = "rgba(93, 86, 84, 0.9)";
 const IGNORED_MDARK = "rgba(93, 86, 84, 0.9)";
 const IGNORED_SPDARK = "rgba(93, 86, 84, 0.9)";
-
+// Types of link
+const TYPE_APP = 0;
+const TYPE_SUB = 1;
+const TYPE_BUNDLE = 2;
 
 
 // ==================== MAIN ====================
@@ -174,11 +177,14 @@ async function storeMethodRequest(links) {
 
 					let notMatchedApps = orderedMatchingAlgorithm(sub.apps, jsonFile.rgOwnedApps);
 
-					if (notMatchedApps.length === 0) {
+					// If sub.apps.length is 0 it means it was most likely an
+					// invalid or non-existent sub
+
+					if (notMatchedApps.length === 0 && sub.apps.length !== 0) {
 						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
-					} else if (notMatchedApps.length !== sub.apps.length) {
+					} else if (notMatchedApps.length !== sub.apps.length && sub.apps.length !== 0) {
 						highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
-					} else {
+					} else if (sub.apps.length !== 0) {
 						// Check the ignored packages key. Although so far it's
 						// not even implemented??
 						// Update: No front-end way of doing it but the code is
@@ -253,9 +259,12 @@ async function webApiOwnedRequest(links) {
 			for (let sub of links.subs) {
 				let notMatched = orderedMatchingAlgorithm(sub.apps, sortedAppIDs);
 
-				if (notMatched.length !== sub.apps.length && notMatched.length >= 1) {
+				// If sub.apps.length is 0 it means it was most likely an
+				// invalid or non-existent sub
+
+				if (notMatched.length !== sub.apps.length && notMatched.length >= 1 && sub.apps.length !== 0) {
 					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_PARTIALLY_OWNED);
-				} else if (notMatched.length === 0) {
+				} else if (notMatched.length === 0 && sub.apps.length !== 0) {
 					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_OWNED);
 				}
 			}
@@ -294,6 +303,11 @@ async function storefrontApiAppsInPack(subID) {
 		});
 
 		let jsonFile = JSON.parse(response.responseText);
+		if (jsonFile[subID].success === false) {
+			reportInexistentLink('sub/{0}'.format(subID));
+			throw new InexistentLinkError(subID, TYPE_SUB);
+		}
+
 		// Return an object with the subID and corresponding apps
 		return {[subID]: jsonFile[subID].data.apps.map(x => x.id)};
 
@@ -1119,6 +1133,28 @@ function highlight(id, type) {
 }
 
 
+function reportInexistentLink(id) {
+	// id will be something like app/1234
+	var invalids = [];
+
+	// Find links that finish on either a given id, or contains that exact id
+	document.querySelectorAll('a[href$="{0}"]'.format(id)).forEach(function(element) {
+		invalids.push(element);
+	});
+	document.querySelectorAll('a[href*="{0}/"]'.format(id)).forEach(function(element) {
+		invalids.push(element);
+	});
+
+	invalids.forEach(function(element) {
+		element.style.backgroundColor = "red";
+		element.title += " INVALID LINK";
+
+		// Maybe remove id from classList?
+		// element.classList.remove(id);
+	});
+}
+
+
 
 // ========== SCAN FUNCTIONS ==========
 function scanTable() {
@@ -1316,5 +1352,23 @@ class NotLoggedInError extends Error {
 	constructor() {
 		super('Not logged into the Steam store');
 		this.name = 'NotLoggedInError';
+	}
+}
+
+
+class InexistentLinkError extends Error {
+	constructor(id, type) {
+		let typeStr = "";
+		if (type === TYPE_APP) {
+			typeStr = "app";
+		} else if (type === TYPE_SUB) {
+			typeStr = "sub";
+		} else if (type === TYPE_BUNDLE) {
+			typeStr = "bundle";
+		}
+
+		super('Inexistent {0}ID {1}.'.format(typeStr, id));
+		this.id = id;
+		this.type = type;
 	}
 }
