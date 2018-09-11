@@ -51,6 +51,7 @@ const TYPE_SUB = 1;
 const TYPE_BUNDLE = 2;
 
 
+
 // ==================== MAIN ====================
 refractorStorage();
 injectInterface();
@@ -59,13 +60,14 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 	var apiKey = localStorage.getItem('APIKey');
 	var steamID64 = localStorage.getItem('SteamID64');
 	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');
+	var bBundleRequests = localStorage.getItem('RCE-BundleRequests');
 
 	var links = scanTable();
 
 	// Add the CSS for being able to highlight rows
 	injectHighlightStyle();
 
-	if ((links.apps.length || links.apps.length || links.bundles.length) > 0) {
+	if (links.apps.length > 0 || links.apps.length > 0 || (bBundleRequests && links.bundles.length > 0)) {
 		(async() => {
 			let storeFallback = true;
 
@@ -80,9 +82,37 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 
 			if (storeFallback === true && checkIDAPI()) {
 				// First gather the apps in all the packages and add them
-				if (links.subs.length > 0 || links.bundles.length > 0) {
+				if (links.subs.length > 0 || (bBundleRequests && links.bundles.length > 0)) {
+					let packsPromises = [];
+
+					if (links.subs.length > 0) {
+						for (let sub of links.subs) {
+							packsPromises.push(requestAppsInPack(sub.id, TYPE_SUB)
+								.then(subData => {
+									let subID = parseInt(Object.keys(subData)[0]);
+									links.subs[links.subs_index[subID]].apps = subData[subID];
+								})
+								.catch(err => err)
+							);
+						}
+					}
+
+					if (bBundleRequests && links.bundles.length > 0) {
+						for (let bundle of links.bundles) {
+							packsPromises.push(requestAppsInPack(bundle.id, TYPE_BUNDLE)
+								.then(bundleData => {
+									let bundleID = parseInt(Object.keys(bundleData)[0]);
+									let bundleIndex = links.bundles_index[bundleID];
+									links.bundles[bundleIndex].apps = bundleData[bundleID].apps;
+									links.bundles[bundleIndex].subs = bundleData[bundleID].subs;
+								})
+								.catch(err => err)
+							);
+						}
+					}
+
 					await Promise.all(links.subs.map(
-						sub => storefrontApiAppsInPack(sub.id)
+						sub => requestAppsInPack(sub.id, TYPE_SUB)
 							.then(subData => {
 								let subID = parseInt(Object.keys(subData)[0]);
 								links.subs[links.subs_index[subID]].apps = subData[subID];
@@ -163,7 +193,7 @@ async function storeMethodRequest(links) {
 
 			if (notOwnedPacks.length > 0) {
 				await Promise.all(notOwnedPacks.map(
-					subID => storefrontApiAppsInPack(subID)
+					subID => requestAppsInPack(subID, TYPE_SUB)
 						.then(subData => {
 							let subID = parseInt(Object.keys(subData)[0]);
 							links.subs[links.subs_index[subID]].apps = subData[subID];
@@ -296,23 +326,37 @@ async function webApiOwnedRequest(links) {
 }
 
 
-async function storefrontApiAppsInPack(subID) {
+async function requestAppsInPack(id, type) {
 	try {
-		let response = await GM_xmlhttpRequestPromise({
-			method: "GET",
-			url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(subID),
-			timeout: 3000
-		});
+		if (type === TYPE_SUB) {
+			let response = await GM_xmlhttpRequestPromise({
+				method: "GET",
+				url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(id),
+				timeout: 3000
+			});
 
-		let jsonFile = JSON.parse(response.responseText);
-		if (jsonFile[subID].success === false) {
-			reportInexistentLink('sub/{0}'.format(subID));
-			throw new InexistentLinkError(subID, TYPE_SUB);
+			let jsonFile = JSON.parse(response.responseText);
+			if (jsonFile[id].success === false) {
+				reportInexistentLink('sub/{0}'.format(id));
+				throw new InexistentLinkError(id, TYPE_SUB);
+			}
+
+			// Return an object with the subID and corresponding apps
+			return {[id]: jsonFile[id].data.apps.map(x => x.id)};
+		} else if (bBundleRequests && type === TYPE_BUNDLE) {
+			// No API method so start parsing HTML like a sucker :^)
+			let response = await GM_xmlhttpRequestPromise({
+				method: "POST",
+				url: "https://store.steampowered.com/bundle/{0}".format(id),
+				timeout: 4000
+			});
+
+			let injectedPage = document.createElement('div');
+			injectedPage.innerHTML = response.responseText;
+
+			let bundleElems = injectedPage.getElementsByClassName('tab_item');
+			// To continue after implementing caches for apps in packages
 		}
-
-		// Return an object with the subID and corresponding apps
-		return {[subID]: jsonFile[subID].data.apps.map(x => x.id)};
-
 	} catch (err) {
 		if (err instanceof TimeoutError) {
 			GM_notification({
@@ -435,6 +479,7 @@ function checkLoginStoreMethod(jsonFile) {
 
 	return true;
 }
+
 
 
 // ========== INJECT FUNCTIONS ==========
