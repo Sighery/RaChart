@@ -191,7 +191,7 @@ async function storeMethodRequest(links) {
 						// there. Same structure as recent rgIgnoredApps
 						orderedMatchingAlgorithm(
 							[subID],
-							turntoIntArray(Object.keys(jsonFile.rgIgnoredPackages)),
+							turnToIntArray(Object.keys(jsonFile.rgIgnoredPackages)),
 							matchedSubID => highlight('sub/{0}'.format(matchedSubID), HIGHLIGHT_IGNORED)
 						);
 					}
@@ -286,6 +286,8 @@ async function webApiOwnedRequest(links) {
 				highlight: false,
 				timeout: 3
 			});
+		} else if (err instanceof InexistentLinkError) {
+			console.warn(err);
 		} else {
 			console.error(err);
 			throw err;
@@ -328,6 +330,9 @@ async function storefrontApiAppsInPack(subID) {
 				highlight: false,
 				timeout: 3
 			});
+		} else if (err instanceof InexistentLinkError) {
+			console.warn(err);
+			throw err;
 		} else {
 			console.error(err);
 			throw err;
@@ -1300,6 +1305,7 @@ function GM_xmlhttpRequestPromise(data) {
 			if (response.status === 200) {
 				resolve(response);
 			} else {
+				// Apparently errors >= 400 do not count to trigger onerror
 				response.url = response.finalUrl;
 				reject(new HttpError(response));
 			}
@@ -1310,6 +1316,7 @@ function GM_xmlhttpRequestPromise(data) {
 			reject(new TimeoutError(response));
 		}
 		data.onerror = (response) => {
+			// Seems this is only triggered by network errors
 			response.url = response.finalUrl;
 			reject(new NetworkError(response));
 		}
