@@ -45,28 +45,54 @@ const IGNORED_DEFAULT = "#9E9E9E";
 const IGNORED_MBLUE = "rgba(93, 86, 84, 0.9)";
 const IGNORED_MDARK = "rgba(93, 86, 84, 0.9)";
 const IGNORED_SPDARK = "rgba(93, 86, 84, 0.9)";
+// Types of link
+const TYPE_APP = 0;
+const TYPE_SUB = 1;
+const TYPE_BUNDLE = 2;
+// Limit time for cached data
+const APPS_IN_SUB_LIMIT = 86400000; // 1 day in milliseconds
+const APPS_IN_BUNDLE_LIMIT = 86400000; // 1 day in milliseconds
 
 
 
 // ==================== MAIN ====================
-refractorStorage();
+refactorStorage();
 injectInterface();
 
 if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts\.com\/giveaway\/)")) !== null && confirmAuthor()) {
 	var apiKey = localStorage.getItem('APIKey');
 	var steamID64 = localStorage.getItem('SteamID64');
 	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');
+	if (bStoreMethod !== undefined && bStoreMethod !== null) bStoreMethod = true;
+	var bBundleRequests = localStorage.getItem('RCE-BundleRequests');
+	if (bBundleRequests !== undefined && bBundleRequests !== null) bBundleRequests = true;
 
 	var links = scanTable();
 
 	// Add the CSS for being able to highlight rows
 	injectHighlightStyle();
 
-	if ((links.apps.length || links.apps.length || links.bundles.length) > 0) {
+	if (links.apps.length > 0 || links.apps.length > 0 || (bBundleRequests && links.bundles.length > 0)) {
+		var storedSubs = {};
+		var storedBundles = {};
+
 		(async() => {
+			// Check and fetch here to avoid repeated code
+			if (bBundleRequests && links.bundles.length > 0) {
+				// Bundles can have both apps and subs. And the HTML provides
+				// the list of appIDs in a sub so if you have a bundle link
+				// you might require the cached subs data as well
+				storedBundles = JSON.parse(GM_getValue('AppsInBundles', '{}'));
+				storedSubs = JSON.parse(GM_getValue('AppsInSubs', '{}'));
+			} else if (links.subs.length > 0) {
+				storedSubs = JSON.parse(GM_getValue('AppsInSubs', '{}'));
+			}
+
+			// If store method is set to false, or if it fails for some reason
+			// fallback to normal storefront API and/or HTML
 			let storeFallback = true;
 
-			if (bStoreMethod !== null && bStoreMethod !== undefined) {
+			if (bStoreMethod === true) {
 				try {
 					await storeMethodRequest(links);
 					storeFallback = false;
@@ -77,21 +103,46 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 
 			if (storeFallback === true && checkIDAPI()) {
 				// First gather the apps in all the packages and add them
-				if (links.subs.length > 0 || links.bundles.length > 0) {
-					await Promise.all(links.subs.map(
-						sub => storefrontApiAppsInPack(sub.id)
-							.then(subData => {
-								let subID = parseInt(Object.keys(subData)[0]);
-								links.subs[links.subs_index[subID]].apps = subData[subID];
-							})
-							.catch(err => err)
-					));
+				if (links.subs.length > 0 || (bBundleRequests && links.bundles.length > 0)) {
+					let packsPromises = [];
+
+					if (links.subs.length > 0) {
+						for (let sub of links.subs) {
+							packsPromises.push(requestAppsInPack(sub.id, TYPE_SUB)
+								.then(subData => {
+									let subID = parseInt(Object.keys(subData)[0]);
+									links.subs[links.subs_index[subID]].apps = subData[subID];
+								})
+								.catch(err => err)
+							);
+						}
+					}
+
+					if (bBundleRequests && links.bundles.length > 0) {
+						for (let bundle of links.bundles) {
+							packsPromises.push(requestAppsInPack(bundle.id, TYPE_BUNDLE)
+								.then(bundleData => {
+									let bundleID = parseInt(Object.keys(bundleData)[0]);
+									let bundleIndex = links.bundles_index[bundleID];
+									links.bundles[bundleIndex].apps = bundleData[bundleID].apps;
+									links.bundles[bundleIndex].subs = bundleData[bundleID].subs;
+								})
+								.catch(err => err)
+							);
+						}
+					}
+
+					await Promise.all(packsPromises);
 				}
 
 				if (links.apps.length > 0) {
 					await webApiOwnedRequest(links);
 				}
 			}
+
+			// Finally save the cache data after being done with all the reqs
+			GM_setValue('AppsInSubs', JSON.stringify(storedSubs));
+			GM_setValue('AppsInBundles', JSON.stringify(storedBundles));
 		})();
 	}
 }
@@ -142,13 +193,73 @@ async function storeMethodRequest(links) {
 				if (notWishlistApps.length > 0) {
 					// Due to a recent change, Steam now sends rgIgnoredApps
 					// as an array of objects such as {284750: 0}
-					let ignoredApps = turnToIntArray(Object.keys(jsonFile.rgIgnoredApps));
-
 					orderedMatchingAlgorithm(
 						notWishlistApps,
-						ignoredApps,
+						turnToIntArray(Object.keys(jsonFile.rgIgnoredApps)),
 						matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_IGNORED)
 					);
+				}
+			}
+		}
+
+		if (bBundleRequests && links.bundles.length > 0) {
+			// Request the bundle data
+			await Promise.all(links.bundles.map(bundle => requestAppsInPack(bundle.id, TYPE_BUNDLE)
+				.then(bundleData => {
+					let bundleID = parseInt(Object.keys(bundleData)[0]);
+					let bundleIndex = links.bundles_index[bundleID];
+					links.bundles[bundleIndex].apps = bundleData[bundleID].apps;
+					links.bundles[bundleIndex].subs = bundleData[bundleID].subs;
+				})
+				.catch(err => err)
+			));
+
+			// Try to match or partially match bundles
+			for (let bundle of links.bundles) {
+				let totalLength = bundle.apps.length + bundle.subs.length;
+				let totalMatched = 0;
+
+				let sortedAppIDs = jsonFile.rgOwnedApps.sort((a, b) => a - b);
+
+				if (bundle.apps.length > 0) {
+					orderedMatchingAlgorithm(
+						bundle.apps,
+						sortedAppIDs,
+						matchedAppID => totalMatched++
+					);
+				}
+
+				if (bundle.subs.length > 0) {
+					// First check if any of the subs are marked as owned, if so
+					// add +1 to totalMatched
+					let notOwnedPacks = orderedMatchingAlgorithm(
+						bundle.subs,
+						jsonFile.rgOwnedPackages,
+						matchingSubID => totalMatched++
+					);
+
+					if (notOwnedPacks.length > 0) {
+						// Get the apps in a given sub now. It should be stored
+						// in storedSubs by now. If a sub is only partially
+						// owned don't count it towards the totalMatched
+						await Promise.all(bundle.subs.map(sub => requestAppsInPack(sub, TYPE_SUB)
+							.then(subData => {
+								let subID = parseInt(Object.keys(subData)[0]);
+								let notMatchedApps = orderedMatchingAlgorithm(subData[subID], sortedAppIDs);
+
+								if (notMatchedApps.length === 0) {
+									totalMatched++;
+								}
+							})
+							.catch(err => err)
+						));
+					}
+				}
+
+				if (totalMatched === totalLength && (totalLength !== 0 || totalMatched !== 0)) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_OWNED);
+				} else if (totalMatched !== totalLength && totalMatched !== 0) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_PARTIALLY_OWNED);
 				}
 			}
 		}
@@ -162,7 +273,7 @@ async function storeMethodRequest(links) {
 
 			if (notOwnedPacks.length > 0) {
 				await Promise.all(notOwnedPacks.map(
-					subID => storefrontApiAppsInPack(subID)
+					subID => requestAppsInPack(subID, TYPE_SUB)
 						.then(subData => {
 							let subID = parseInt(Object.keys(subData)[0]);
 							links.subs[links.subs_index[subID]].apps = subData[subID];
@@ -176,16 +287,21 @@ async function storeMethodRequest(links) {
 
 					let notMatchedApps = orderedMatchingAlgorithm(sub.apps, jsonFile.rgOwnedApps);
 
-					if (notMatchedApps.length === 0) {
+					// If sub.apps.length is 0 it means it was most likely an
+					// invalid or non-existent sub
+
+					if (notMatchedApps.length === 0 && sub.apps.length !== 0) {
 						highlight('sub/{0}'.format(subID), HIGHLIGHT_OWNED);
-					} else if (notMatchedApps.length !== sub.apps.length) {
+					} else if (notMatchedApps.length !== sub.apps.length && sub.apps.length !== 0) {
 						highlight('sub/{0}'.format(subID), HIGHLIGHT_PARTIALLY_OWNED);
-					} else {
+					} else if (sub.apps.length !== 0) {
 						// Check the ignored packages key. Although so far it's
 						// not even implemented??
+						// Update: No front-end way of doing it but the code is
+						// there. Same structure as recent rgIgnoredApps
 						orderedMatchingAlgorithm(
 							[subID],
-							jsonFile.rgIgnoredPackages,
+							turnToIntArray(Object.keys(jsonFile.rgIgnoredPackages)),
 							matchedSubID => highlight('sub/{0}'.format(matchedSubID), HIGHLIGHT_IGNORED)
 						);
 					}
@@ -253,10 +369,50 @@ async function webApiOwnedRequest(links) {
 			for (let sub of links.subs) {
 				let notMatched = orderedMatchingAlgorithm(sub.apps, sortedAppIDs);
 
-				if (notMatched.length !== sub.apps.length && notMatched.length >= 1) {
+				// If sub.apps.length is 0 it means it was most likely an
+				// invalid or non-existent sub
+
+				if (notMatched.length !== sub.apps.length && notMatched.length >= 1 && sub.apps.length !== 0) {
 					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_PARTIALLY_OWNED);
-				} else if (notMatched.length === 0) {
+				} else if (notMatched.length === 0 && sub.apps.length !== 0) {
 					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_OWNED);
+				}
+			}
+
+			// Try to match or partially match bundles
+			for (let bundle of links.bundles) {
+				let totalLength = bundle.apps.length + bundle.subs.length;
+				let totalMatched = 0;
+
+				if (bundle.apps.length > 0) {
+					orderedMatchingAlgorithm(
+						bundle.apps,
+						sortedAppIDs,
+						matchedAppID => totalMatched++
+					);
+				}
+
+				if (bundle.subs.length > 0) {
+					// First get the apps in a given sub. It should be stored in
+					// storedSubs by now. If a sub is only partially owned don't
+					// count it towards the totalMatched
+					await Promise.all(bundle.subs.map(sub => requestAppsInPack(sub, TYPE_SUB)
+						.then(subData => {
+							let subID = parseInt(Object.keys(subData)[0]);
+							let notMatchedApps = orderedMatchingAlgorithm(subData[subID], sortedAppIDs);
+
+							if (notMatchedApps.length === 0) {
+								totalMatched++;
+							}
+						})
+						.catch(err => err)
+					));
+				}
+
+				if (totalMatched === totalLength && (totalLength !== 0 || totalMatched !== 0)) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_OWNED);
+				} else if (totalMatched !== totalLength && totalMatched !== 0) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_PARTIALLY_OWNED);
 				}
 			}
 		}
@@ -277,6 +433,8 @@ async function webApiOwnedRequest(links) {
 				highlight: false,
 				timeout: 3
 			});
+		} else if (err instanceof InexistentLinkError) {
+			console.warn(err);
 		} else {
 			console.error(err);
 			throw err;
@@ -285,23 +443,146 @@ async function webApiOwnedRequest(links) {
 }
 
 
-async function storefrontApiAppsInPack(subID) {
+async function requestAppsInPack(id, type) {
 	try {
-		let response = await GM_xmlhttpRequestPromise({
-			method: "GET",
-			url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(subID),
-			timeout: 3000
-		});
+		if (type === TYPE_SUB) {
+			if (id in storedSubs && (Date.now() - storedSubs[id].checked_time) < APPS_IN_SUB_LIMIT) {
+				// Cached data and it seems to still be fresh enough
+				if (storedSubs[id].success === false) {
+					reportInexistentLink('sub/{0}'.format(id));
+					throw new InexistentLinkError(id, TYPE_SUB);
+				}
 
-		let jsonFile = JSON.parse(response.responseText);
-		// Return an object with the subID and corresponding apps
-		return {[subID]: jsonFile[subID].data.apps.map(x => x.id)};
+				return {[id]: storedSubs[id].apps};
+			} else {
+				let response = await GM_xmlhttpRequestPromise({
+					method: "GET",
+					url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(id),
+					timeout: 3000
+				});
 
+				let jsonFile = JSON.parse(response.responseText);
+				if (jsonFile[id].success === false) {
+					reportInexistentLink('sub/{0}'.format(id));
+					storedSubs[id] = {
+						"success": false,
+						"checked_time": Date.now()
+					}
+
+					throw new InexistentLinkError(id, TYPE_SUB);
+				}
+
+				let appsArray = jsonFile[id].data.apps.map(x => x.id);
+
+				// Add the apps to the stored subs object with current timestamp
+				storedSubs[id] = {
+					"success": true,
+					"checked_time": Date.now(),
+					"apps": appsArray
+				}
+
+				// Return an object with the id and corresponding apps
+				return {[id]: appsArray};
+			}
+		} else if (bBundleRequests && type === TYPE_BUNDLE) {
+			// No API method so start parsing HTML like a sucker :^)
+			if (id in storedBundles && (Date.now() - storedBundles[id].checked_time) < APPS_IN_BUNDLE_LIMIT) {
+				// Cached data and it seems to still be fresh enough
+				if (storedBundles[id].success === false) {
+					reportInexistentLink('bundle/{0}'.format(id));
+					throw new InexistentLinkError(id, TYPE_BUNDLE);
+				}
+
+				return {
+					[id]: {
+						"apps": storedBundles[id].apps,
+						"subs": storedBundles[id].subs
+					}
+				}
+			} else {
+				try {
+					let response = await GM_xmlhttpRequestPromise({
+						method: "POST",
+						url: "https://store.steampowered.com/bundle/{0}".format(id),
+						timeout: 4000
+					});
+
+					// If it redirected to the main Steam store page, throw error
+					if (response.finalUrl === "https://store.steampowered.com/") {
+						response.status = 302;
+						throw new HttpError(response);
+					}
+
+					let injectedPage = document.createElement('div');
+					injectedPage.innerHTML = response.responseText;
+
+					let bundleElems = injectedPage.getElementsByClassName('tab_item');
+
+					let finalResponse = {
+						[id]: {
+							"apps": [],
+							"subs": []
+						}
+					}
+
+					for (let elem of bundleElems) {
+						// If this attribute is non-existent it means this is an app
+						let entryType = (elem.hasAttribute('data-ds-packageid')) ? TYPE_SUB : TYPE_APP;
+
+						if (entryType === TYPE_APP) {
+							finalResponse[id].apps.push(parseInt(elem.getAttribute('data-ds-appid')));
+						} else if (entryType === TYPE_SUB) {
+							// Steam provides a list of appIDs in a package as well
+							// so let's store that while we're at it
+							let subID = parseInt(elem.getAttribute('data-ds-packageid'));
+							finalResponse[id].subs.push(subID);
+
+							storedSubs[subID] = {
+								"success": true,
+								"checked_time": Date.now(),
+								"apps": []
+							}
+
+							storedSubs[subID].apps.push.apply(
+								storedSubs[subID].apps,
+								elem.getAttribute('data-ds-appid').split(',').map(x => parseInt(x))
+							);
+						}
+					}
+
+					// Add the fetched data to the cache
+					storedBundles[id] = {
+						"success": true,
+						"checked_time": Date.now(),
+						"apps": finalResponse[id].apps,
+						"subs": finalResponse[id].subs
+					}
+
+					return finalResponse;
+				} catch (err) {
+					if (err instanceof HttpError && err.response.status === 302) {
+						// Seems like non-existent is 302 error code
+						reportInexistentLink('bundle/{0}'.format(id));
+						storedBundles[id] = {
+							"success": false,
+							"checked_time": Date.now()
+						}
+
+						throw new InexistentLinkError(id, TYPE_BUNDLE);
+					} else {
+						throw err;
+					}
+				}
+			}
+		}
 	} catch (err) {
 		if (err instanceof TimeoutError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Request for fetching apps in package {0} timed out.".format(subID),
+				text: "Error: Request for fetching apps in {0} {1} timed out.".format(
+					(type === TYPE_SUB) ? "package" : "bundle",
+					id
+				),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
@@ -309,11 +590,17 @@ async function storefrontApiAppsInPack(subID) {
 		} else if (err instanceof HttpError || err instanceof NetworkError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Could not fetch apps in package {0}.".format(subID),
+				text: "Error: Could not fetch apps in {0} {1}.".format(
+					(type === TYPE_SUB) ? "package" : "bundle",
+					id
+				),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
 			});
+		} else if (err instanceof InexistentLinkError) {
+			console.warn(err);
+			throw err;
 		} else {
 			console.error(err);
 			throw err;
@@ -416,6 +703,7 @@ function checkLoginStoreMethod(jsonFile) {
 
 	return true;
 }
+
 
 
 // ========== INJECT FUNCTIONS ==========
@@ -710,69 +998,80 @@ function injectDialog() {
 	dlgBody.children[25].children[1].style.width = "inherit";
 	dlgBody.children[25].children[1].style.marginTop = "10px";
 
+	dlgBody.appendChild(document.createElement('div'));
+	dlgBody.children[26].title = "With no official API it requests and parses HTML, meaning it's more prone to errors (although the other stuff will still work fine even if this fails) and it will be a bit slower when it has to request fresh data instead of using the cached data";
+	dlgBody.children[26].appendChild(document.createElement('label'));
+	dlgBody.children[26].children[0].htmlFor = "RCE-BundleRequests";
+	dlgBody.children[26].children[0].textContent = "Check to enable experimental detection of bundles ";
+	dlgBody.children[26].appendChild(document.createElement('input'));
+	dlgBody.children[26].children[1].setAttribute('id', 'RCE-BundleRequests');
+	dlgBody.children[26].children[1].type = "checkbox";
+	dlgBody.children[26].children[1].style.width = "inherit";
+	dlgBody.children[26].children[1].style.marginTop = "10px";
+
 
 	dlgBody.appendChild(document.createElement('label'));
-	dlgBody.children[26].htmlFor = "MBlueTheme";
-	dlgBody.children[26].appendChild(document.createElement('a'));
-	dlgBody.children[26].children[0].href = "https://www.steamgifts.com/discussion/62TRf/";
-	dlgBody.children[26].children[0].target = "_blank";
-	dlgBody.children[26].children[0].textContent = "Check this if you use Mully's Blue Theme";
-	dlgBody.children[26].children[0].style.color = "#115a8e";
-	dlgBody.children[26].children[0].style.textDecoration = "underline";
+	dlgBody.children[27].htmlFor = "MBlueTheme";
+	dlgBody.children[27].appendChild(document.createElement('a'));
+	dlgBody.children[27].children[0].href = "https://www.steamgifts.com/discussion/62TRf/";
+	dlgBody.children[27].children[0].target = "_blank";
+	dlgBody.children[27].children[0].textContent = "Check this if you use Mully's Blue Theme";
+	dlgBody.children[27].children[0].style.color = "#115a8e";
+	dlgBody.children[27].children[0].style.textDecoration = "underline";
 
 	dlgBody.appendChild(document.createElement('input'));
-	dlgBody.children[27].setAttribute('id', 'MBlueTheme');
-	dlgBody.children[27].type = "checkbox";
-	dlgBody.children[27].style.width = "inherit";
-	dlgBody.children[27].style.marginTop = "10px";
-	dlgBody.children[27].style.marginLeft = "3px";
+	dlgBody.children[28].setAttribute('id', 'MBlueTheme');
+	dlgBody.children[28].type = "checkbox";
+	dlgBody.children[28].style.width = "inherit";
+	dlgBody.children[28].style.marginTop = "10px";
+	dlgBody.children[28].style.marginLeft = "3px";
 
 	dlgBody.appendChild(document.createElement('br'));
 
 	dlgBody.appendChild(document.createElement('label'));
-	dlgBody.children[29].htmlFor = "MDarkTheme";
-	dlgBody.children[29].appendChild(document.createElement("a"));
-	dlgBody.children[29].children[0].href = "https://www.steamgifts.com/discussion/62TRf/";
-	dlgBody.children[29].children[0].target = "_blank";
-	dlgBody.children[29].children[0].textContent = "Check this if you use Mully's Dark Theme";
-	dlgBody.children[29].children[0].style.color = "#115a8e";
-	dlgBody.children[29].children[0].style.textDecoration = "underline";
+	dlgBody.children[30].htmlFor = "MDarkTheme";
+	dlgBody.children[30].appendChild(document.createElement("a"));
+	dlgBody.children[30].children[0].href = "https://www.steamgifts.com/discussion/62TRf/";
+	dlgBody.children[30].children[0].target = "_blank";
+	dlgBody.children[30].children[0].textContent = "Check this if you use Mully's Dark Theme";
+	dlgBody.children[30].children[0].style.color = "#115a8e";
+	dlgBody.children[30].children[0].style.textDecoration = "underline";
 
 	dlgBody.appendChild(document.createElement('input'));
-	dlgBody.children[30].setAttribute('id', 'MDarkTheme');
-	dlgBody.children[30].type = "checkbox";
-	dlgBody.children[30].style.width = "inherit";
-	dlgBody.children[30].style.marginTop = "2px";
-	dlgBody.children[30].style.marginLeft = "3px";
+	dlgBody.children[31].setAttribute('id', 'MDarkTheme');
+	dlgBody.children[31].type = "checkbox";
+	dlgBody.children[31].style.width = "inherit";
+	dlgBody.children[31].style.marginTop = "2px";
+	dlgBody.children[31].style.marginLeft = "3px";
 
 	dlgBody.appendChild(document.createElement('br'));
 
 	dlgBody.appendChild(document.createElement('label'));
-	dlgBody.children[32].htmlFor = "SPDarkTheme";
-	dlgBody.children[32].appendChild(document.createElement("a"));
-	dlgBody.children[32].children[0].href = "https://www.steamgifts.com/discussion/iO230/";
-	dlgBody.children[32].children[0].target = "_blank";
-	dlgBody.children[32].children[0].textContent = "Check this if you use SquishedPotatoe's Dark Theme";
-	dlgBody.children[32].children[0].style.color = "#115a8e";
-	dlgBody.children[32].children[0].style.textDecoration = "underline";
+	dlgBody.children[33].htmlFor = "SPDarkTheme";
+	dlgBody.children[33].appendChild(document.createElement("a"));
+	dlgBody.children[33].children[0].href = "https://www.steamgifts.com/discussion/iO230/";
+	dlgBody.children[33].children[0].target = "_blank";
+	dlgBody.children[33].children[0].textContent = "Check this if you use SquishedPotatoe's Dark Theme";
+	dlgBody.children[33].children[0].style.color = "#115a8e";
+	dlgBody.children[33].children[0].style.textDecoration = "underline";
 
 	dlgBody.appendChild(document.createElement('input'));
-	dlgBody.children[33].setAttribute('id', 'SPDarkTheme');
-	dlgBody.children[33].type = "checkbox";
-	dlgBody.children[33].style.width = "inherit";
-	dlgBody.children[33].style.marginTop = "2px";
-	dlgBody.children[33].style.marginLeft = "3px";
+	dlgBody.children[34].setAttribute('id', 'SPDarkTheme');
+	dlgBody.children[34].type = "checkbox";
+	dlgBody.children[34].style.width = "inherit";
+	dlgBody.children[34].style.marginTop = "2px";
+	dlgBody.children[34].style.marginLeft = "3px";
 
 	dlgBody.appendChild(document.createElement('h2'));
-	dlgBody.children[34].style.float = "right";
-	dlgBody.children[34].style.marginTop = "-2px";
-	dlgBody.children[34].appendChild(document.createElement('a'));
-	dlgBody.children[34].children[0].href = "https://www.steamgifts.com/discussion/riOvr/";
-	dlgBody.children[34].children[0].style.color = "#FFFFFF";
-	dlgBody.children[34].children[0].style.fontSize = "20px";
-	dlgBody.children[34].children[0].style.fontStyle = "italic";
-	dlgBody.children[34].children[0].style.textDecoration = "underline";
-	dlgBody.children[34].children[0].textContent = "Thread";
+	dlgBody.children[35].style.float = "right";
+	dlgBody.children[35].style.marginTop = "-2px";
+	dlgBody.children[35].appendChild(document.createElement('a'));
+	dlgBody.children[35].children[0].href = "https://www.steamgifts.com/discussion/riOvr/";
+	dlgBody.children[35].children[0].style.color = "#FFFFFF";
+	dlgBody.children[35].children[0].style.fontSize = "20px";
+	dlgBody.children[35].children[0].style.fontStyle = "italic";
+	dlgBody.children[35].children[0].style.textDecoration = "underline";
+	dlgBody.children[35].children[0].textContent = "Thread";
 
 
 	background.addEventListener('click', function() {
@@ -856,9 +1155,19 @@ function injectDialog() {
 		}
 	});
 
-	dlgBody.children[27].addEventListener('click', function() {
+	dlgBody.children[26].children[1].addEventListener('click', () => {
+		// Using experimental bundle detection
+		let input = dlgBody.children[26].children[1];
+		if (input.checked === false) {
+			localStorage.removeItem(input.id);
+		} else {
+			localStorage.setItem(input.id, true);
+		}
+	});
+
+	dlgBody.children[28].addEventListener('click', function() {
 		// Mully's Blue Theme
-		var input = dlgBody.children[27];
+		var input = dlgBody.children[28];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
 		} else {
@@ -866,15 +1175,15 @@ function injectDialog() {
 		}
 
 		// Remove all other themes' checkboxes
-		dlgBody.children[30].checked = false;
+		dlgBody.children[31].checked = false;
 		localStorage.removeItem(dlgBody.children[30].id);
-		dlgBody.children[33].checked = false;
+		dlgBody.children[34].checked = false;
 		localStorage.removeItem(dlgBody.children[33].id);
 	});
 
-	dlgBody.children[30].addEventListener('click', function() {
+	dlgBody.children[31].addEventListener('click', function() {
 		// Mully's Dark Theme
-		var input = dlgBody.children[30];
+		var input = dlgBody.children[31];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
 		} else {
@@ -882,15 +1191,15 @@ function injectDialog() {
 		}
 
 		// Remove all other themes' checkboxes
-		dlgBody.children[27].checked = false;
+		dlgBody.children[28].checked = false;
 		localStorage.removeItem(dlgBody.children[27].id);
-		dlgBody.children[33].checked = false;
+		dlgBody.children[34].checked = false;
 		localStorage.removeItem(dlgBody.children[33].id);
 	});
 
-	dlgBody.children[33].addEventListener('click', function() {
+	dlgBody.children[34].addEventListener('click', function() {
 		// SquishedPotatoe's Dark Theme
-		var input = dlgBody.children[33];
+		var input = dlgBody.children[34];
 		if (input.checked === false) {
 			localStorage.removeItem(input.id);
 		} else {
@@ -898,9 +1207,9 @@ function injectDialog() {
 		}
 
 		// Remove all other themes' checkboxes
-		dlgBody.children[27].checked = false;
+		dlgBody.children[28].checked = false;
 		localStorage.removeItem(dlgBody.children[27].id);
-		dlgBody.children[30].checked = false;
+		dlgBody.children[31].checked = false;
 		localStorage.removeItem(dlgBody.children[30].id);
 	});
 
@@ -1119,6 +1428,28 @@ function highlight(id, type) {
 }
 
 
+function reportInexistentLink(id) {
+	// id will be something like app/1234
+	var invalids = [];
+
+	// Find links that finish on either a given id, or contains that exact id
+	document.querySelectorAll('a[href$="{0}"]'.format(id)).forEach(function(element) {
+		invalids.push(element);
+	});
+	document.querySelectorAll('a[href*="{0}/"]'.format(id)).forEach(function(element) {
+		invalids.push(element);
+	});
+
+	invalids.forEach(function(element) {
+		element.style.backgroundColor = "red";
+		element.title += " INVALID LINK";
+
+		// Maybe remove id from classList?
+		// element.classList.remove(id);
+	});
+}
+
+
 
 // ========== SCAN FUNCTIONS ==========
 function scanTable() {
@@ -1178,7 +1509,8 @@ function scanTable() {
 	for (let i = 0; i < bundleIDs.length; i++) {
 		final.bundles.push({
 			id: bundleIDs[i],
-			apps: []
+			apps: [],
+			subs: []
 		});
 		final.bundles_index[bundleIDs[i]] = i;
 	}
@@ -1199,7 +1531,7 @@ function checkLst(value, list) {
 }
 
 
-function refractorStorage() {
+function refactorStorage() {
 	var ownedColor = localStorage.getItem('PrimaryColor');
 	var partiallyOwnedColor = localStorage.getItem('SecondaryColor');
 
@@ -1211,6 +1543,32 @@ function refractorStorage() {
 	if (partiallyOwnedColor !== null) {
 		localStorage.setItem('RCE-PartiallyOwnedColor', partiallyOwnedColor);
 		localStorage.removeItem('SecondaryColor');
+	}
+
+	// Create AppsInSubs GM local storage if it doesn't exist yet
+	// Empty object such as but stored as a string:
+	//	{"18408": {
+	//		"success": true,
+	//		"checked_time": unix_timestamp in milliseconds,
+	//		"apps": [201270,201277,34343,34342,34345,34348,223180,201279]
+	//		}
+	//	}
+	// If success is false apps will be probably non-existant
+	if (GM_getValue('AppsInSubs', false) === false) {
+		GM_setValue('AppsInSubs', '{}');
+	}
+
+	// Similar thing for bundles, but it will also have a subs array
+	//	{"232": {
+	//		"success": true,
+	//		"checked_time": unix_timestamp in milliseconds,
+	//		"apps": [300,20,30,40,50,60,70,130,220,240,400,420,500,550,620],
+	//		"subs": [7,38,79,54029]
+	//		}
+	//	}
+	// If success is false apps and subs will probably be non-existant
+	if (GM_getValue('AppsInBundles', false) === false) {
+		GM_setValue('AppsInBundles', '{}');
 	}
 }
 
@@ -1258,12 +1616,20 @@ function orderedMatchingAlgorithm(array1, array2, customFunction = null) {
 
 
 function GM_xmlhttpRequestPromise(data) {
+	// Data can have a special parameter preventredirect to throw an error if
+	// final URL doesn't match initial URL (since there's no actual way to block
+	// redirections with XMLHttpRequest)
 	return new Promise((resolve, reject) => {
 		// Match old callback functions to Promise resolve/reject
 		data.onload = (response) => {
-			if (response.status === 200) {
+			if (data.preventredirect === true && data.url !== response.finalUrl) {
+				response.url = data.url;
+				response.status = 302;
+				reject(new HttpError(response));
+			} else if (response.status === 200) {
 				resolve(response);
 			} else {
+				// Apparently errors >= 400 do not count to trigger onerror
 				response.url = response.finalUrl;
 				reject(new HttpError(response));
 			}
@@ -1274,6 +1640,7 @@ function GM_xmlhttpRequestPromise(data) {
 			reject(new TimeoutError(response));
 		}
 		data.onerror = (response) => {
+			// Seems this is only triggered by network errors
 			response.url = response.finalUrl;
 			reject(new NetworkError(response));
 		}
@@ -1316,5 +1683,23 @@ class NotLoggedInError extends Error {
 	constructor() {
 		super('Not logged into the Steam store');
 		this.name = 'NotLoggedInError';
+	}
+}
+
+
+class InexistentLinkError extends Error {
+	constructor(id, type) {
+		let typeStr = "";
+		if (type === TYPE_APP) {
+			typeStr = "app";
+		} else if (type === TYPE_SUB) {
+			typeStr = "sub";
+		} else if (type === TYPE_BUNDLE) {
+			typeStr = "bundle";
+		}
+
+		super('Inexistent {0}ID {1}.'.format(typeStr, id));
+		this.id = id;
+		this.type = type;
 	}
 }
