@@ -49,18 +49,23 @@ const IGNORED_SPDARK = "rgba(93, 86, 84, 0.9)";
 const TYPE_APP = 0;
 const TYPE_SUB = 1;
 const TYPE_BUNDLE = 2;
+// Limit time for cached data
+const APPS_IN_SUB_LIMIT = 86400000; // 1 day in milliseconds
+const APPS_IN_BUNDLE_LIMIT = 86400000; // 1 day in milliseconds
 
 
 
 // ==================== MAIN ====================
-refractorStorage();
+refactorStorage();
 injectInterface();
 
 if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts\.com\/giveaway\/)")) !== null && confirmAuthor()) {
 	var apiKey = localStorage.getItem('APIKey');
 	var steamID64 = localStorage.getItem('SteamID64');
 	var bStoreMethod = localStorage.getItem('RCE-StoreMethod');
+	if (bStoreMethod !== undefined && bStoreMethod !== null) bStoreMethod = true;
 	var bBundleRequests = localStorage.getItem('RCE-BundleRequests');
+	if (bBundleRequests !== undefined && bBundleRequests !== null) bBundleRequests = true;
 
 	var links = scanTable();
 
@@ -68,10 +73,26 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 	injectHighlightStyle();
 
 	if (links.apps.length > 0 || links.apps.length > 0 || (bBundleRequests && links.bundles.length > 0)) {
+		var storedSubs = {};
+		var storedBundles = {};
+
 		(async() => {
+			// Check and fetch here to avoid repeated code
+			if (bBundleRequests && links.bundles.length > 0) {
+				// Bundles can have both apps and subs. And the HTML provides
+				// the list of appIDs in a sub so if you have a bundle link
+				// you might require the cached subs data as well
+				storedBundles = JSON.parse(GM_getValue('AppsInBundles', '{}'));
+				storedSubs = JSON.parse(GM_getValue('AppsInSubs', '{}'));
+			} else if (links.subs.length > 0) {
+				storedSubs = JSON.parse(GM_getValue('AppsInSubs', '{}'));
+			}
+
+			// If store method is set to false, or if it fails for some reason
+			// fallback to normal storefront API and/or HTML
 			let storeFallback = true;
 
-			if (bStoreMethod !== null && bStoreMethod !== undefined) {
+			if (bStoreMethod === true) {
 				try {
 					await storeMethodRequest(links);
 					storeFallback = false;
@@ -111,20 +132,17 @@ if ((window.location.href.match("(\.steamgifts\.com\/discussion\/)|(\.steamgifts
 						}
 					}
 
-					await Promise.all(links.subs.map(
-						sub => requestAppsInPack(sub.id, TYPE_SUB)
-							.then(subData => {
-								let subID = parseInt(Object.keys(subData)[0]);
-								links.subs[links.subs_index[subID]].apps = subData[subID];
-							})
-							.catch(err => err)
-					));
+					await Promise.all(packsPromises);
 				}
 
 				if (links.apps.length > 0) {
 					await webApiOwnedRequest(links);
 				}
 			}
+
+			// Finally save the cache data after being done with all the reqs
+			GM_setValue('AppsInSubs', JSON.stringify(storedSubs));
+			GM_setValue('AppsInBundles', JSON.stringify(storedBundles));
 		})();
 	}
 }
@@ -180,6 +198,68 @@ async function storeMethodRequest(links) {
 						turnToIntArray(Object.keys(jsonFile.rgIgnoredApps)),
 						matchingAppID => highlight('app/{0}'.format(matchingAppID), HIGHLIGHT_IGNORED)
 					);
+				}
+			}
+		}
+
+		if (bBundleRequests && links.bundles.length > 0) {
+			// Request the bundle data
+			await Promise.all(links.bundles.map(bundle => requestAppsInPack(bundle.id, TYPE_BUNDLE)
+				.then(bundleData => {
+					let bundleID = parseInt(Object.keys(bundleData)[0]);
+					let bundleIndex = links.bundles_index[bundleID];
+					links.bundles[bundleIndex].apps = bundleData[bundleID].apps;
+					links.bundles[bundleIndex].subs = bundleData[bundleID].subs;
+				})
+				.catch(err => err)
+			));
+
+			// Try to match or partially match bundles
+			for (let bundle of links.bundles) {
+				let totalLength = bundle.apps.length + bundle.subs.length;
+				let totalMatched = 0;
+
+				let sortedAppIDs = jsonFile.rgOwnedApps.sort((a, b) => a - b);
+
+				if (bundle.apps.length > 0) {
+					orderedMatchingAlgorithm(
+						bundle.apps,
+						sortedAppIDs,
+						matchedAppID => totalMatched++
+					);
+				}
+
+				if (bundle.subs.length > 0) {
+					// First check if any of the subs are marked as owned, if so
+					// add +1 to totalMatched
+					let notOwnedPacks = orderedMatchingAlgorithm(
+						bundle.subs,
+						jsonFile.rgOwnedPackages,
+						matchingSubID => totalMatched++
+					);
+
+					if (notOwnedPacks.length > 0) {
+						// Get the apps in a given sub now. It should be stored
+						// in storedSubs by now. If a sub is only partially
+						// owned don't count it towards the totalMatched
+						await Promise.all(bundle.subs.map(sub => requestAppsInPack(sub, TYPE_SUB)
+							.then(subData => {
+								let subID = parseInt(Object.keys(subData)[0]);
+								let notMatchedApps = orderedMatchingAlgorithm(subData[subID], sortedAppIDs);
+
+								if (notMatchedApps.length === 0) {
+									totalMatched++;
+								}
+							})
+							.catch(err => err)
+						));
+					}
+				}
+
+				if (totalMatched === totalLength && (totalLength !== 0 || totalMatched !== 0)) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_OWNED);
+				} else if (totalMatched !== totalLength && totalMatched !== 0) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_PARTIALLY_OWNED);
 				}
 			}
 		}
@@ -298,6 +378,43 @@ async function webApiOwnedRequest(links) {
 					highlight('sub/{0}'.format(sub.id), HIGHLIGHT_OWNED);
 				}
 			}
+
+			// Try to match or partially match bundles
+			for (let bundle of links.bundles) {
+				let totalLength = bundle.apps.length + bundle.subs.length;
+				let totalMatched = 0;
+
+				if (bundle.apps.length > 0) {
+					orderedMatchingAlgorithm(
+						bundle.apps,
+						sortedAppIDs,
+						matchedAppID => totalMatched++
+					);
+				}
+
+				if (bundle.subs.length > 0) {
+					// First get the apps in a given sub. It should be stored in
+					// storedSubs by now. If a sub is only partially owned don't
+					// count it towards the totalMatched
+					await Promise.all(bundle.subs.map(sub => requestAppsInPack(sub, TYPE_SUB)
+						.then(subData => {
+							let subID = parseInt(Object.keys(subData)[0]);
+							let notMatchedApps = orderedMatchingAlgorithm(subData[subID], sortedAppIDs);
+
+							if (notMatchedApps.length === 0) {
+								totalMatched++;
+							}
+						})
+						.catch(err => err)
+					));
+				}
+
+				if (totalMatched === totalLength && (totalLength !== 0 || totalMatched !== 0)) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_OWNED);
+				} else if (totalMatched !== totalLength && totalMatched !== 0) {
+					highlight('bundle/{0}'.format(bundle.id), HIGHLIGHT_PARTIALLY_OWNED);
+				}
+			}
 		}
 	} catch (err) {
 		if (err instanceof TimeoutError) {
@@ -329,39 +446,143 @@ async function webApiOwnedRequest(links) {
 async function requestAppsInPack(id, type) {
 	try {
 		if (type === TYPE_SUB) {
-			let response = await GM_xmlhttpRequestPromise({
-				method: "GET",
-				url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(id),
-				timeout: 3000
-			});
+			if (id in storedSubs && (Date.now() - storedSubs[id].checked_time) < APPS_IN_SUB_LIMIT) {
+				// Cached data and it seems to still be fresh enough
+				if (storedSubs[id].success === false) {
+					reportInexistentLink('sub/{0}'.format(id));
+					throw new InexistentLinkError(id, TYPE_SUB);
+				}
 
-			let jsonFile = JSON.parse(response.responseText);
-			if (jsonFile[id].success === false) {
-				reportInexistentLink('sub/{0}'.format(id));
-				throw new InexistentLinkError(id, TYPE_SUB);
+				return {[id]: storedSubs[id].apps};
+			} else {
+				let response = await GM_xmlhttpRequestPromise({
+					method: "GET",
+					url: "https://store.steampowered.com/api/packagedetails/?packageids={0}".format(id),
+					timeout: 3000
+				});
+
+				let jsonFile = JSON.parse(response.responseText);
+				if (jsonFile[id].success === false) {
+					reportInexistentLink('sub/{0}'.format(id));
+					storedSubs[id] = {
+						"success": false,
+						"checked_time": Date.now()
+					}
+
+					throw new InexistentLinkError(id, TYPE_SUB);
+				}
+
+				let appsArray = jsonFile[id].data.apps.map(x => x.id);
+
+				// Add the apps to the stored subs object with current timestamp
+				storedSubs[id] = {
+					"success": true,
+					"checked_time": Date.now(),
+					"apps": appsArray
+				}
+
+				// Return an object with the id and corresponding apps
+				return {[id]: appsArray};
 			}
-
-			// Return an object with the subID and corresponding apps
-			return {[id]: jsonFile[id].data.apps.map(x => x.id)};
 		} else if (bBundleRequests && type === TYPE_BUNDLE) {
 			// No API method so start parsing HTML like a sucker :^)
-			let response = await GM_xmlhttpRequestPromise({
-				method: "POST",
-				url: "https://store.steampowered.com/bundle/{0}".format(id),
-				timeout: 4000
-			});
+			if (id in storedBundles && (Date.now() - storedBundles[id].checked_time) < APPS_IN_BUNDLE_LIMIT) {
+				// Cached data and it seems to still be fresh enough
+				if (storedBundles[id].success === false) {
+					reportInexistentLink('bundle/{0}'.format(id));
+					throw new InexistentLinkError(id, TYPE_BUNDLE);
+				}
 
-			let injectedPage = document.createElement('div');
-			injectedPage.innerHTML = response.responseText;
+				return {
+					[id]: {
+						"apps": storedBundles[id].apps,
+						"subs": storedBundles[id].subs
+					}
+				}
+			} else {
+				try {
+					let response = await GM_xmlhttpRequestPromise({
+						method: "POST",
+						url: "https://store.steampowered.com/bundle/{0}".format(id),
+						timeout: 4000
+					});
 
-			let bundleElems = injectedPage.getElementsByClassName('tab_item');
-			// To continue after implementing caches for apps in packages
+					// If it redirected to the main Steam store page, throw error
+					if (response.finalUrl === "https://store.steampowered.com/") {
+						response.status = 302;
+						throw new HttpError(response);
+					}
+
+					let injectedPage = document.createElement('div');
+					injectedPage.innerHTML = response.responseText;
+
+					let bundleElems = injectedPage.getElementsByClassName('tab_item');
+
+					let finalResponse = {
+						[id]: {
+							"apps": [],
+							"subs": []
+						}
+					}
+
+					for (let elem of bundleElems) {
+						// If this attribute is non-existent it means this is an app
+						let entryType = (elem.hasAttribute('data-ds-packageid')) ? TYPE_SUB : TYPE_APP;
+
+						if (entryType === TYPE_APP) {
+							finalResponse[id].apps.push(parseInt(elem.getAttribute('data-ds-appid')));
+						} else if (entryType === TYPE_SUB) {
+							// Steam provides a list of appIDs in a package as well
+							// so let's store that while we're at it
+							let subID = parseInt(elem.getAttribute('data-ds-packageid'));
+							finalResponse[id].subs.push(subID);
+
+							storedSubs[subID] = {
+								"success": true,
+								"checked_time": Date.now(),
+								"apps": []
+							}
+
+							storedSubs[subID].apps.push.apply(
+								storedSubs[subID].apps,
+								elem.getAttribute('data-ds-appid').split(',').map(x => parseInt(x))
+							);
+						}
+					}
+
+					// Add the fetched data to the cache
+					storedBundles[id] = {
+						"success": true,
+						"checked_time": Date.now(),
+						"apps": finalResponse[id].apps,
+						"subs": finalResponse[id].subs
+					}
+
+					return finalResponse;
+				} catch (err) {
+					if (err instanceof HttpError && err.response.status === 302) {
+						// Seems like non-existent is 302 error code
+						reportInexistentLink('bundle/{0}'.format(id));
+						storedBundles[id] = {
+							"success": false,
+							"checked_time": Date.now()
+						}
+
+						throw new InexistentLinkError(id, TYPE_BUNDLE);
+					} else {
+						throw err;
+					}
+				}
+			}
 		}
 	} catch (err) {
 		if (err instanceof TimeoutError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Request for fetching apps in package {0} timed out.".format(subID),
+				text: "Error: Request for fetching apps in {0} {1} timed out.".format(
+					(type === TYPE_SUB) ? "package" : "bundle",
+					id
+				),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
@@ -369,7 +590,10 @@ async function requestAppsInPack(id, type) {
 		} else if (err instanceof HttpError || err instanceof NetworkError) {
 			GM_notification({
 				title: "RaChart™ Enhancer",
-				text: "Error: Could not fetch apps in package {0}.".format(subID),
+				text: "Error: Could not fetch apps in {0} {1}.".format(
+					(type === TYPE_SUB) ? "package" : "bundle",
+					id
+				),
 				image: "http://i.imgur.com/f2OtaSe.png",
 				highlight: false,
 				timeout: 3
@@ -1264,7 +1488,8 @@ function scanTable() {
 	for (let i = 0; i < bundleIDs.length; i++) {
 		final.bundles.push({
 			id: bundleIDs[i],
-			apps: []
+			apps: [],
+			subs: []
 		});
 		final.bundles_index[bundleIDs[i]] = i;
 	}
@@ -1285,7 +1510,7 @@ function checkLst(value, list) {
 }
 
 
-function refractorStorage() {
+function refactorStorage() {
 	var ownedColor = localStorage.getItem('PrimaryColor');
 	var partiallyOwnedColor = localStorage.getItem('SecondaryColor');
 
@@ -1297,6 +1522,32 @@ function refractorStorage() {
 	if (partiallyOwnedColor !== null) {
 		localStorage.setItem('RCE-PartiallyOwnedColor', partiallyOwnedColor);
 		localStorage.removeItem('SecondaryColor');
+	}
+
+	// Create AppsInSubs GM local storage if it doesn't exist yet
+	// Empty object such as but stored as a string:
+	//	{"18408": {
+	//		"success": true,
+	//		"checked_time": unix_timestamp in milliseconds,
+	//		"apps": [201270,201277,34343,34342,34345,34348,223180,201279]
+	//		}
+	//	}
+	// If success is false apps will be probably non-existant
+	if (GM_getValue('AppsInSubs', false) === false) {
+		GM_setValue('AppsInSubs', '{}');
+	}
+
+	// Similar thing for bundles, but it will also have a subs array
+	//	{"232": {
+	//		"success": true,
+	//		"checked_time": unix_timestamp in milliseconds,
+	//		"apps": [300,20,30,40,50,60,70,130,220,240,400,420,500,550,620],
+	//		"subs": [7,38,79,54029]
+	//		}
+	//	}
+	// If success is false apps and subs will probably be non-existant
+	if (GM_getValue('AppsInBundles', false) === false) {
+		GM_setValue('AppsInBundles', '{}');
 	}
 }
 
@@ -1344,10 +1595,17 @@ function orderedMatchingAlgorithm(array1, array2, customFunction = null) {
 
 
 function GM_xmlhttpRequestPromise(data) {
+	// Data can have a special parameter preventredirect to throw an error if
+	// final URL doesn't match initial URL (since there's no actual way to block
+	// redirections with XMLHttpRequest)
 	return new Promise((resolve, reject) => {
 		// Match old callback functions to Promise resolve/reject
 		data.onload = (response) => {
-			if (response.status === 200) {
+			if (data.preventredirect === true && data.url !== response.finalUrl) {
+				response.url = data.url;
+				response.status = 302;
+				reject(new HttpError(response));
+			} else if (response.status === 200) {
 				resolve(response);
 			} else {
 				// Apparently errors >= 400 do not count to trigger onerror
