@@ -18,9 +18,13 @@ Once you have either the `.py` or `.exe` release you'll need to create a file ca
 
 Once you have `keys.json` set up you are ready to run the program. You'll have an introductory message explaining you how it works and how to use it. You'll also be told what to do in case there was any error.
 
----
+## Future version
 
-`bundles_api.py` and `bundle_thread.py` are still work on progress, and even though some of the classes in it work, they may change at any time, so don't base your programs or scripts on them. Basic usage for them is similar to this:
+`racharter.py` is an updated, work-in-progress version of the old `createTableSG.py` program, meant to replace it. It is done using Python3, and will feature both automatic and manual modes.
+
+`bundles_api.py` is meant to provide an API of multiple API sites, by automating fetching the data from bundles so a person doesn't have to input the data on what games are included manually. However, for the moment only BundleStars is partially supported, since it provides an undocumented API it uses to generate its own front-end pages.
+
+`bundles_api.py` and `bundle_thread.py` are still work-in-progress too, and even though some of the classes in it work, they may change at any time, so don't base your programs or scripts on them. Basic usage for them is similar to this:
 
 ```
 from bundles_api import BundleStars
