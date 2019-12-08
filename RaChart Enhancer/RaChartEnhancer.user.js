@@ -787,7 +787,7 @@ function injectFunctions() {
 
 
 function injectRow() {
-	var discDropdown = document.querySelector("a[class~='nav__button'][href='/discussions']");
+	var discDropdown = document.querySelector("a[class~='nav__button'][href^='/discussions']");
 	var newRow;
 
 	if (discDropdown.previousElementSibling === null) {
